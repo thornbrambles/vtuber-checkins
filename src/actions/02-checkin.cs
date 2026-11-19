@@ -46,6 +46,15 @@ public class CPHInline
         int lastRewardStream = CPH.GetTwitchUserVarById<int>(userId, "ci_reward_last_stream", true);
         if (previous == streamId || lastRewardStream == streamId)
         {
+            string lastRedemptionId = CPH.GetTwitchUserVarById<string>(userId, "ci_last_redemption_id", true);
+            if (lastRedemptionId == redemptionId)
+            {
+                // The same redemption may be replayed if fulfillment previously failed.
+                // Do NOT refund an already-recorded successful check-in.
+                if (!CPH.TwitchRedemptionFulfill(rewardId, redemptionId))
+                    CPH.LogWarn("Previously recorded redemption " + redemptionId + " could not be fulfilled. Inspect the queue.");
+                return true;
+            }
             CPH.SendMessage($"@{userName}, you're already checked in for this stream! This duplicate redemption will be refunded.");
             CancelRedemption("duplicate check-in");
             return true;
@@ -59,6 +68,7 @@ public class CPHInline
         CPH.SetTwitchUserVarById(userId, "ci_last_stream", streamId, true);
         // Immutable once-per-stream redemption marker; admin attendance resets do not clear it.
         CPH.SetTwitchUserVarById(userId, "ci_reward_last_stream", streamId, true);
+        CPH.SetTwitchUserVarById(userId, "ci_last_redemption_id", redemptionId, true);
         CPH.SetTwitchUserVarById(userId, "ci_total", total, true);
         CPH.SetTwitchUserVarById(userId, "ci_streak", streak, true);
         int usedCredits = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_claimed", true));
