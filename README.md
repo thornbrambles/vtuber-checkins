@@ -11,11 +11,17 @@ A Twitch Channel Points check-in system for Streamer.bot, with persistent lifeti
 
 ## Viewer commands
 
+See [the full command catalog](docs/COMMANDS.md) for usage, permissions, examples and effects.
+
 `!checkins` shows your count and credits; `!checkinboard` shows the leaderboard; `!game Game Title` submits a wheel entry; `!wheel` checks credits and `!wheel list` shows monthly entries.
 
 ## Admin commands
 
 `!checkinadmin view @user`, `set @user N`, `add @user N`, `remove @user N`, `streak @user N`, and `reset @user`. Restrict this command to Twitch moderators and the broadcaster.
+
+## Wheel ledger and credits
+
+v5 stores game entries in monthly persisted variables (`ci_wheel_month_YYYY_MM`). Game credits are earned at each new ten-check-in high-water threshold and used credits are not reset by moderator edits. Existing v4 users **must follow the one-time migration guide** in [docs/REFRACTOR.md](docs/REFRACTOR.md) before deploying the new wheel scripts. See [installation instructions](docs/INSTALLATION.md).
 
 ## Status
 
