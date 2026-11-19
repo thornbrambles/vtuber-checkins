@@ -1,4 +1,8 @@
-# Installation — VTuber Check-ins v4
+# Installation — VTuber Check-ins v5
+
+**Upgrading from v4?** Read [REFRACTOR.md](REFRACTOR.md) and run the one-time wheel migration **before installing the new v5 wheel scripts**. The original all-month wheel JSON must be migrated or old entries will not appear in monthly lists.
+
+**All commands and permissions:** [COMMANDS.md](COMMANDS.md).
 
 This repository contains standalone Streamer.bot C# action bodies and an OBS HTML overlay. It is **not** an importable Streamer.bot package. Follow the steps in order. Back up Streamer.bot before changing an existing setup.
 
@@ -16,7 +20,7 @@ Make a Streamer.bot backup/export, and record any existing persisted user/global
 
 ## 2. Create the blocking queue
 
-In Streamer.bot go to Actions & Queues, create a queue called Community Checkins and set it to Blocking. Assign **all seven** actions below to that same queue. This serializes check-ins, admin edits, wheel submissions and overlay-state writes.
+In Streamer.bot go to Actions & Queues, create a queue called Community Checkins and set it to Blocking. Assign **all seven runtime** actions below to that same queue. This serializes check-ins, admin edits, wheel submissions and overlay-state writes.
 
 ## 3. Create the Channel Points reward
 
@@ -82,7 +86,7 @@ Command settings are independent from action trigger creation. For each command 
 - !checkinadmin add @viewer 5 — add five lifetime check-ins
 - !checkinadmin remove @viewer 3 — subtract three
 - !checkinadmin streak @viewer 7 — set streak to seven
-- !checkinadmin reset @viewer — reset lifetime total, streak, current attendance and wheel-claim count
+- !checkinadmin reset @viewer — reset lifetime total, streak, current attendance but not already earned or spent wheel credits
 
 Administrative changes re-evaluate badges and republish leaderboard state. Historical game entries already submitted are not deleted by a reset. The audit messages are written to Streamer.bot's log.
 
@@ -125,15 +129,15 @@ Do not repeatedly initialize a manual stream during an actual broadcast. The str
 
 Every ten lifetime check-ins yields one submission credit. Credits carry over until used. A viewer with 30 lifetime check-ins has three credits less any already claimed. Each !game entry stores game, Twitch user ID, username, Eastern-local date, Eastern-local YYYY-MM month, UTC timestamp and an entry ID.
 
-Entries reside in the persisted global string ci_wheel_entries_json as a JSON array. Export that string to a UTF-8 file called wheel-entries.json, then run:
+New entries reside in month-partitioned persisted global arrays, named `ci_wheel_month_YYYY_MM`. The previous `ci_wheel_entries_json` is kept as a read-only legacy archive after migration. Earned credits are stored as a monotonic per-user `ci_wheel_earned` high-water counter, while `ci_wheel_claimed` counts used credits; admin resets preserve both. Export that string to a UTF-8 file called wheel-entries.json, then run:
 
-    python tools/export-wheel.py wheel-entries.json 2026-11
+    python tools/export-wheel.py wheel-2026-11.json 2026-11
 
 Output: wheel-2026-11.csv with **game, user, date** columns. The exporter does not talk directly to Streamer.bot; you must supply the JSON export manually. Keep raw viewer export files out of Git.
 
 ## 10. Upgrading from earlier versions
 
-Back up everything first. Preserve existing persisted ci_* user/global variables. Replace your existing action bodies with the matching numbered source files, keeping the blocking queue. The v4 additions are CI - Game Submit and CI - Wheel Commands, plus the two chat commands !game and !wheel. If upgrading from a chat-command check-in version, remove the old !checkin trigger and connect CI - Viewer Check-in to the specific Twitch Channel Points redemption instead.
+Back up everything first. **If upgrading from v4, run `src/actions/08-migrate-legacy-wheel.cs` manually in your blocking queue before replacing the wheel actions.** Read [REFRACTOR.md](REFRACTOR.md). Preserve existing persisted ci_* user/global variables. Replace your existing action bodies with the matching numbered source files, keeping the blocking queue. The v4 additions were CI - Game Submit and CI - Wheel Commands, plus the two chat commands !game and !wheel. The v5 refactor adds monthly storage and the one-time migration action. If upgrading from a chat-command check-in version, remove the old !checkin trigger and connect CI - Viewer Check-in to the specific Twitch Channel Points redemption instead.
 
 The overlay file is replaced independently in OBS; refresh its Browser Source afterward. Do not erase Streamer.bot's persisted user variables just to install the source code.
 
@@ -173,3 +177,7 @@ Check command matching for !game is Starts With, there is a Command Triggered tr
 Data is stored locally in Streamer.bot persisted variables, keyed to Twitch user IDs. Back up Streamer.bot data before changes; do not commit exported data, access tokens, or private user information. The project does not include an executable Windows installer, automatic source import, real spinning-wheel animation or hosted database.
 
 These are community scripts, not a fully tested distributed service. Compile them against your specific Streamer.bot build and verify Channel Points fulfillment/refunds before deploying on a live stream.
+
+## v5 reward-accounting note
+
+`!checkinadmin reset @viewer` clears attendance counts and streaks, but intentionally **does not reset earned or spent wheel credits**. This prevents old reward redemptions from becoming spendable again. The migration action is manual-only, has no chat command or Twitch trigger, and should be disabled after completion. See [REFRACTOR.md](REFRACTOR.md) for limitations and recovery instructions.
