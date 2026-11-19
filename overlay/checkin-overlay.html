@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Streamer.bot Check-in Overlay</title>
+<style>
+:root { color-scheme: dark; --bg:rgba(11,24,28,.87); --border:rgba(164,218,176,.26); --mint:#b9e6bd; --muted:#b4c9c3; --gold:#ffde89; }
+* { box-sizing:border-box; }
+html,body { margin:0; width:100%; height:100%; overflow:hidden; background:transparent; font-family:Inter,"Segoe UI",Arial,sans-serif; color:#fff; }
+#app { position:absolute; top:24px; right:26px; width:345px; opacity:1; visibility:visible; transform:translateY(0); transition:opacity .35s ease, transform .35s ease, visibility .35s; }
+#app.is-hidden { opacity:0; visibility:hidden; transform:translateY(-12px); pointer-events:none; }
+.panel { padding:20px 22px; border-radius:20px; background:var(--bg); border:1px solid var(--border); box-shadow:0 14px 32px rgba(0,0,0,.28); }
+.eyebrow {font-size:12px; font-weight:750; text-transform:uppercase; letter-spacing:2.2px;color:var(--mint)}
+.heading {font-size:25px; font-weight:800; margin:6px 0 13px}
+.counter { display:flex; align-items:baseline; justify-content:space-between; padding:11px 0 15px; border-bottom:1px solid var(--border); }
+.count {font-size:52px;line-height:1;font-weight:850; font-variant-numeric:tabular-nums;color:var(--mint)}
+.count-label { font-size:13px; color:var(--muted); text-align:right; }
+.section {margin-top:17px;}
+.section-title {font-weight:750;font-size:13px;letter-spacing:.4px;color:var(--mint);margin:0 0 9px}
+.entry {display:flex; justify-content:space-between; gap:12px; padding:5px 0;font-size:14px;}
+.name {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score {font-weight:750;flex-shrink:0;color:var(--gold)}
+.empty {font-size:13px;color:var(--muted);padding:7px 0}
+#toast { position:absolute;top:26px;left:26px;width:480px;max-width:calc(100% - 500px); background:var(--bg); border:1px solid var(--border); border-radius:20px;padding:20px 25px;box-shadow:0 16px 40px rgba(0,0,0,.35);opacity:0; transform:translateY(-20px); transition:opacity .25s ease,transform .25s ease; }
+#toast.show { opacity:1;transform:translateY(0) }
+#toast .toast-head {font-size:13px;letter-spacing:1.5px;color:var(--mint);font-weight:800;text-transform:uppercase}
+#toast .toast-name {font-size:25px;font-weight:800;margin-top:5px;overflow-wrap:anywhere}
+#toast .toast-details {font-size:15px;color:var(--muted);margin-top:7px}
+#status {position:absolute;right:26px;bottom:15px;font-size:12px;color:#d1ddd5;opacity:.0;} /* set opacity: 1 for troubleshooting */
+</style>
+</head>
+<body>
+<div id="app" class="panel is-hidden">
+  <div class="eyebrow">🌿 The Grove</div><div class="heading">Community Check-ins</div>
+  <div class="counter"><span id="count" class="count">0</span><div class="count-label">viewers checked in<br>this stream</div></div>
+  <div class="section"><div class="section-title">🏆 Lifetime leaderboard</div><div id="totals" class="empty">No check-ins yet</div></div>
+  <div class="section"><div class="section-title">🔥 Active streaks</div><div id="streaks" class="empty">No active streaks yet</div></div>
+</div>
+<div id="toast" aria-live="polite"><div class="toast-head" id="toastHead">New check-in</div><div class="toast-name" id="toastName"></div><div class="toast-details" id="toastDetails"></div></div>
+<div id="status"></div>
+<script>
+/* Set to your local Streamer.bot WebSocket endpoint. Do not expose it publicly. */
+const WS_URL = 'ws://127.0.0.1:8080/';
+const POLL_MS = 1500;
+const LEADERBOARD_VISIBLE_MS = 60 * 1000;
+const $ = (id)=>document.getElementById(id);
+let socket=null, pending=false, ready=false, lastEvent='', toastTimer=null;
+let lastCheckinAtMs = 0;
+function updateLeaderboardVisibility() {
+  const elapsed = Date.now() - lastCheckinAtMs;
+  const visible = lastCheckinAtMs > 0 && elapsed >= 0 && elapsed < LEADERBOARD_VISIBLE_MS;
+  $('app').classList.toggle('is-hidden', !visible);
+}
+function renderRanks(id, rows, unit) {
+  const el = $(id); el.replaceChildren();
+  if (!Array.isArray(rows) || !rows.length) { el.className='empty'; el.textContent='No check-ins yet'; return; }
+  el.className='';
+  rows.forEach((row,i)=>{
+    const item=document.createElement('div');item.className='entry';
+    const name=document.createElement('span');name.className='name';name.textContent=`${i+1}. ${row.name || 'Viewer'}`;
+    const score=document.createElement('span');score.className='score';score.textContent=`${Number(row.value)||0} ${unit}`;
+    item.append(name,score);el.append(item);
+  });
+}
+function showToast(data) {
+  const box=$('toast');
+  $('toastHead').textContent=data.milestone ? '🏆 Milestone unlocked' : '🌿 New check-in';
+  $('toastName').textContent=data.latest+(data.milestone ? ` · ${data.milestone}` : '');
+  $('toastDetails').textContent=`${data.total} lifetime check-ins · ${data.streak} stream streak`;
+  box.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>box.classList.remove('show'),6500);
+}
+function render(state) {
+  if (!state || typeof state !== 'object') return;
+  const checkedIn = Number(state.count) || 0;
+  $('count').textContent=checkedIn;
+  // Only successful check-ins reset the one-minute timer. Admin edits don't.
+  lastCheckinAtMs = Number(state.lastCheckinAtMs) || 0;
+  updateLeaderboardVisibility();
+  renderRanks('totals',state.topTotals,'total');
+  renderRanks('streaks',state.topStreaks,'streak');
+  if (ready && state.eventId && state.eventId!==lastEvent && state.latest) showToast(state);
+  lastEvent=state.eventId || lastEvent;
+  ready=true;
+}
+function poll() {
+  if (!socket || socket.readyState!==WebSocket.OPEN || pending) return;
+  pending=true;
+  socket.send(JSON.stringify({request:'GetGlobal', id:'checkin-state', variable:'ci_overlay_json', persisted:true}));
+  setTimeout(()=>{pending=false},1200);
+}
+function connect() {
+  try {socket=new WebSocket(WS_URL)} catch(e) { $('status').textContent='Invalid WebSocket URL'; setTimeout(connect,3000);return; }
+  socket.onopen=()=>{$('status').textContent='Connected';ready=false;pending=false;poll();};
+  socket.onmessage=(event)=>{
+    let response;try{response=JSON.parse(event.data)}catch(e){return}
+    if(response.id!=='checkin-state')return;
+    pending=false;
+    if(response.status!=='ok' || !response.variable)return;
+    try { render(typeof response.variable.value==='string' ? JSON.parse(response.variable.value) : response.variable.value); }
+    catch(e){ $('status').textContent='Bad overlay JSON: '+e.message; }
+  };
+  socket.onclose=()=>{$('status').textContent='Disconnected; retrying';pending=false;setTimeout(connect,3000)};
+  socket.onerror=()=>{ $('status').textContent='WebSocket error'; };
+}
+setInterval(poll,POLL_MS);
+setInterval(updateLeaderboardVisibility, 200);
+connect();
+</script>
+</body></html>
