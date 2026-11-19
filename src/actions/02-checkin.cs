@@ -58,6 +58,9 @@ public class CPHInline
         CPH.SetTwitchUserVarById(userId, "ci_last_stream", streamId, true);
         CPH.SetTwitchUserVarById(userId, "ci_total", total, true);
         CPH.SetTwitchUserVarById(userId, "ci_streak", streak, true);
+        int usedCredits = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_claimed", true));
+        int earnedCredits = Math.Max(Math.Max(usedCredits, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_earned", true)), total / 10);
+        CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", earnedCredits, true);
         CPH.SetGlobalVar("ci_stream_count", count, true);
 
         string unlocked = "";
