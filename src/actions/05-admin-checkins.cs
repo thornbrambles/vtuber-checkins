@@ -108,7 +108,8 @@ public class CPHInline
             streak = 0;
             clearAttendance = true;
         }
-        // Reset / zeroing removes this stream's attendance and permits re-check-in.
+        // Reset / zeroing removes displayed attendance. The independent redemption marker
+        // still prevents a second Channel Points check-in during this stream.
         if (clearAttendance && checkedIn)
         {
             int count = Math.Max(0, CPH.GetGlobalVar<int>("ci_stream_count", true) - 1);
