@@ -71,9 +71,18 @@ public class CPHInline
             CPH.SendMessage("🎮 No games submitted to this month's wheel yet.");
             return true;
         }
-        var first = entries.Take(5).Select(e => $"{e.game} ({e.user}, {e.date})");
-        CPH.SendMessage($"🎮 {month} wheel ({entries.Count} entries): " + string.Join(" | ", first)
-                        + (entries.Count > 5 ? $" | +{entries.Count - 5} more; export the monthly ledger for all entries." : ""));
+        string prefix = $"🎮 {month} wheel ({entries.Count} entries): ";
+        var displayed = new List<string>();
+        foreach (var entry in entries.Take(5))
+        {
+            string item = $"{entry.game} ({entry.user}, {entry.date})";
+            string trial = prefix + String.Join(" | ", displayed.Concat(new[] { item }));
+            if (trial.Length > 390) break;
+            displayed.Add(item);
+        }
+        int more = entries.Count - displayed.Count;
+        CPH.SendMessage(prefix + String.Join(" | ", displayed)
+            + (more > 0 ? $" | +{more} more; export monthly ledger for the rest." : ""));
         return true;
     }
 
