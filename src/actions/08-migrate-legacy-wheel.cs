@@ -81,7 +81,12 @@ public class CPHInline
         foreach (var group in legacy.GroupBy(e => e.userId))
         {
             string userId = group.Key;
-            int historicSpent = group.Count(); // lower bound; may be > actual count of entitlements
+            // Count unique legacy entry IDs (not duplicated imported rows) so a
+            // damaged legacy archive with repeated IDs cannot inflate credits.
+            int historicSpent = group.Select(e => e.id)
+                .Where(x => !String.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.Ordinal).Count()
+                + group.Count(e => String.IsNullOrWhiteSpace(e.id));
             int savedSpent = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_claimed", true));
             int spent = Math.Max(savedSpent, historicSpent);
             int total = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_total", true));
