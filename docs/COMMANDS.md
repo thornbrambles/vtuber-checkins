@@ -22,6 +22,7 @@ This document describes the commands present **in the repository**. These are no
 | `!wheel credits` | Everyone | `07-wheel-commands.cs` | Same as `!wheel` |
 | `!wheel list` | Everyone | `07-wheel-commands.cs` | Up to five current-month game entries with game, user, date and total entry count |
 | `!game Stardew Valley` | Everyone | `06-game-submit.cs` | Spend one available credit; save the game, username, Twitch user ID, date, month and entry ID in the current month's persisted ledger |
+| `!game` (no title) | Everyone | `06-game-submit.cs` | Recover an interrupted previous submission, if any; otherwise display usage |
 
 ## Moderator and broadcaster commands
 
@@ -34,7 +35,7 @@ The only admin command is `!checkinadmin`, with these subcommands. Configure **S
 | `!checkinadmin add @viewer 5` | Increase lifetime total by five |
 | `!checkinadmin remove @viewer 3` | Reduce lifetime total by three (floor of zero) |
 | `!checkinadmin streak @viewer 10` | Set a viewer's streak to ten |
-| `!checkinadmin reset @viewer` | Reset check-in total, streak and current attendance, but **preserve earned credits, used credits and historical game entries** |
+| `!checkinadmin reset @viewer` | Reset check-in total, streak and current attendance, but **preserve earned credits, used credits and historical game entries**; no second Channel Points redemption in the same stream |
 
 All the admin edits are logged. Manually increasing totals can unlock additional lifetime wheel entitlements when crossing a new high-water milestone; decreasing and increasing back to previous totals won't issue extra entitlements.
 
@@ -57,7 +58,7 @@ The source files implement the behavior, but they **do not provision the UI comm
 - Monthly entries: `ci_wheel_month_YYYY_MM` (persisted JSON array per month)
 - Legacy wheel archive: `ci_wheel_entries_json` (read-only after migration)
 
-Available credits = `max(0, ci_wheel_earned - ci_wheel_claimed)`. `ci_wheel_earned` is the highest number of ten-check-in entitlements ever earned and never decreases. Historical redemptions never become available again after an admin reset.
+Available credits = `max(0, ci_wheel_earned - ci_wheel_claimed)`. Pending submissions are saved per user as `ci_wheel_pending_json` for crash recovery. Run the one-time migration action before the new wheel commands are enabled. `ci_wheel_earned` is the highest number of ten-check-in entitlements ever earned and never decreases. Historical redemptions never become available again after an admin reset.
 
 ## No other chat commands
 
