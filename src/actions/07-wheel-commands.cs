@@ -18,12 +18,23 @@ public class CPHInline
 
     public bool Execute()
     {
+        if (!CPH.GetGlobalVar<bool>("ci_wheel_legacy_migrated", true))
+        {
+            CPH.SendMessage("The monthly game wheel needs one-time migration/setup by a moderator before it can be used.");
+            return true;
+        }
         string id, name, raw;
         if (!CPH.TryGetArg("userId", out id) || String.IsNullOrWhiteSpace(id) ||
             !CPH.TryGetArg("userName", out name) || String.IsNullOrWhiteSpace(name))
             return false;
         CPH.TryGetArg("rawInput", out raw);
         string sub = (raw ?? "").Trim().ToLowerInvariant();
+        string pending = CPH.GetTwitchUserVarById<string>(id, "ci_wheel_pending_json", true);
+        if (!String.IsNullOrWhiteSpace(pending))
+        {
+            CPH.SendMessage($"@{name}, an earlier game submission is pending recovery. Run !game with no title to finish it, then check !wheel again.");
+            return true;
+        }
         int total = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
         int used = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
         int earned = Math.Max(Math.Max(used, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), total / 10);
