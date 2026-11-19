@@ -31,7 +31,9 @@ public class CPHInline
             .OrderByDescending(x => x.Value).ThenBy(x => x.UserName).ToList();
         int index = ranked.FindIndex(x => x.UserId == id);
         string rank = index >= 0 && total > 0 ? "#" + (index + 1) : "unranked";
-        int wheelCredits = Math.Max(0, total / 10 - Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true)));
+        int usedCredits = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
+        int earnedCredits = Math.Max(Math.Max(usedCredits, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), total / 10);
+        int wheelCredits = earnedCredits - usedCredits;
         string progress = next == 0 ? "all milestones earned" : (next - total) + " to next reward";
         CPH.SendMessage($"@{name}: {total} lifetime | {streak} stream streak | Rank {rank} | Badge: {badge} | " +
             (checkedIn ? "checked in this stream" : "not checked in this stream") + $" | {progress} | Game submissions: {wheelCredits} (!game Title)");
