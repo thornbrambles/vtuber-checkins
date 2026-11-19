@@ -64,6 +64,29 @@ public class CPHInline
         string msgId;
         CPH.TryGetArg("msgId", out msgId);
         string entryId = String.IsNullOrWhiteSpace(msgId) ? Guid.NewGuid().ToString("N") : "chat-" + msgId;
+        // Twitch may redeliver a chat event after a restart. Do not spend twice
+        // for the same message ID even after its pending transaction was cleared.
+        if (!String.IsNullOrWhiteSpace(msgId))
+        {
+            string existingKey = "ci_wheel_month_" + local.ToString("yyyy_MM");
+            try
+            {
+                string existingJson = CPH.GetGlobalVar<string>(existingKey, true);
+                var existing = String.IsNullOrWhiteSpace(existingJson)
+                    ? new List<WheelEntry>()
+                    : JsonConvert.DeserializeObject<List<WheelEntry>>(existingJson) ?? new List<WheelEntry>();
+                if (existing.Any(x => x != null && x.id == entryId))
+                {
+                    CPH.LogInfo("Ignoring duplicate !game event " + msgId);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                CPH.LogError("Cannot check wheel submission duplicates: " + ex.Message);
+                return false;
+            }
+        }
         var entry = new WheelEntry {
             id = entryId, userId = id, user = name,
             game = game, date = local.ToString("yyyy-MM-dd"),
