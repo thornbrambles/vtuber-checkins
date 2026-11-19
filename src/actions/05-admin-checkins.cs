@@ -66,11 +66,13 @@ public class CPHInline
         int last = CPH.GetTwitchUserVarById<int>(id, "ci_last_stream", true);
         int oldTotal = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
         int oldStreak = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_streak", true));
+        int usedCredits = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
+        int priorEarnedCredits = Math.Max(Math.Max(usedCredits, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), oldTotal / 10);
         bool checkedIn = streamId > 0 && last == streamId;
 
         if (operation == "view")
         {
-            CPH.SendMessage($"[Check-in admin] @{name}: total={oldTotal}, streak={oldStreak}, lastStream={last}, checkedInNow={checkedIn}, badge={Badge(oldTotal)}");
+            CPH.SendMessage($"[Check-in admin] @{name}: total={oldTotal}, streak={oldStreak}, lastStream={last}, checkedInNow={checkedIn}, badge={Badge(oldTotal)}, wheelCredits={priorEarnedCredits-usedCredits}");
             return true;
         }
         int amount = 0;
@@ -114,8 +116,10 @@ public class CPHInline
         }
         if (clearAttendance)
             CPH.UnsetTwitchUserVarById(id, "ci_last_stream", true);
-        if (operation == "reset" || (clearAttendance && total == 0))
-            CPH.SetTwitchUserVarById(id, "ci_wheel_claimed", 0, true);
+        // Wheel credits already used are NEVER reset. Existing submissions remain in history.
+        // Earned entitlement is a lifetime high-water mark, not derived solely from
+        // the current editable check-in total.
+        CPH.SetTwitchUserVarById(id, "ci_wheel_earned", Math.Max(priorEarnedCredits, total / 10), true);
 
         CPH.SetTwitchUserVarById(id, "ci_total", total, true);
         CPH.SetTwitchUserVarById(id, "ci_streak", streak, true);
