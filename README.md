@@ -19,6 +19,10 @@ See [the full command catalog](docs/COMMANDS.md) for usage, permissions, example
 
 `!checkinadmin view @user`, `set @user N`, `add @user N`, `remove @user N`, `streak @user N`, and `reset @user`. Restrict this command to Twitch moderators and the broadcaster.
 
+## v3 migration, backup and offline debug
+
+**Running v3 today?** Go directly to [v3 migration / backup / debug instructions](docs/V3-MIGRATION-BACKUP-DEBUG.md). There is no need to install v4. Manual-only tools include `09-export-data.cs`, `10-import-data.cs` (dry run by default), and `11-debug-admin.cs` (disabled and dry run by default). No commands or triggers are automatically registered.
+
 ## Wheel ledger and credits
 
 v5 stores game entries in monthly persisted variables (`ci_wheel_month_YYYY_MM`). Game credits are earned at each new ten-check-in high-water threshold and used credits are not reset by moderator edits. Existing v4 users **must follow the one-time migration guide** in [docs/REFRACTOR.md](docs/REFRACTOR.md) before deploying the new wheel scripts. See [installation instructions](docs/INSTALLATION.md).
