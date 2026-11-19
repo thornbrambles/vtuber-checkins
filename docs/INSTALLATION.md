@@ -78,6 +78,7 @@ Command settings are independent from action trigger creation. For each command 
 - !wheel or !wheel credits — unused game submission credits
 - !wheel list — up to five entries in the current month's wheel
 - !game Stardew Valley — add a game to the current month using one credit
+- !game (without a title) — recover a pending, interrupted submission and display usage
 
 ### Moderator commands
 
@@ -137,7 +138,7 @@ Output: wheel-2026-11.csv with **game, user, date** columns. The exporter does n
 
 ## 10. Upgrading from earlier versions
 
-Back up everything first. **If upgrading from v4, run `src/actions/08-migrate-legacy-wheel.cs` manually in your blocking queue before replacing the wheel actions.** Read [REFRACTOR.md](REFRACTOR.md). Preserve existing persisted ci_* user/global variables. Replace your existing action bodies with the matching numbered source files, keeping the blocking queue. The v4 additions were CI - Game Submit and CI - Wheel Commands, plus the two chat commands !game and !wheel. The v5 refactor adds monthly storage and the one-time migration action. If upgrading from a chat-command check-in version, remove the old !checkin trigger and connect CI - Viewer Check-in to the specific Twitch Channel Points redemption instead.
+Back up everything first. **If upgrading from v4, run `src/actions/08-migrate-legacy-wheel.cs` manually in your blocking queue before replacing the wheel actions.** Read [REFRACTOR.md](REFRACTOR.md). Preserve existing persisted ci_* user/global variables. Replace your existing action bodies with the matching numbered source files, keeping the blocking queue. The v4 additions were CI - Game Submit and CI - Wheel Commands, plus the two chat commands !game and !wheel. The v5 refactor adds monthly storage and the one-time migration action. **New !game and !wheel actions refuse submissions/queries until `ci_wheel_legacy_migrated` is true.** If upgrading from a chat-command check-in version, remove the old !checkin trigger and connect CI - Viewer Check-in to the specific Twitch Channel Points redemption instead.
 
 The overlay file is replaced independently in OBS; refresh its Browser Source afterward. Do not erase Streamer.bot's persisted user variables just to install the source code.
 
@@ -180,4 +181,4 @@ These are community scripts, not a fully tested distributed service. Compile the
 
 ## v5 reward-accounting note
 
-`!checkinadmin reset @viewer` clears attendance counts and streaks, but intentionally **does not reset earned or spent wheel credits**. This prevents old reward redemptions from becoming spendable again. The migration action is manual-only, has no chat command or Twitch trigger, and should be disabled after completion. See [REFRACTOR.md](REFRACTOR.md) for limitations and recovery instructions.
+`!checkinadmin reset @viewer` clears attendance counts and streaks, but intentionally **does not reset earned or spent wheel credits**. This prevents old reward redemptions from becoming spendable again. The migration action is manual-only, has no chat command or Twitch trigger, and should be disabled after completion. The new `ci_reward_last_stream` marker prevents another Channel Points redemption in the same stream after an admin reset, although the admin can clear the displayed attendance. An interrupted game submission can be reconciled by using `!game` with no title; inspect `ci_wheel_pending_json` if recovery fails. See [REFRACTOR.md](REFRACTOR.md) for limitations and recovery instructions.
