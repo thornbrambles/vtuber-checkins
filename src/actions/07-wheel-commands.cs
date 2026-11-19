@@ -18,35 +18,54 @@ public class CPHInline
 
     public bool Execute()
     {
-        string id, name;
+        string id, name, raw;
         if (!CPH.TryGetArg("userId", out id) || String.IsNullOrWhiteSpace(id) ||
-            !CPH.TryGetArg("userName", out name) || String.IsNullOrWhiteSpace(name)) return false;
-        string raw;
+            !CPH.TryGetArg("userName", out name) || String.IsNullOrWhiteSpace(name))
+            return false;
         CPH.TryGetArg("rawInput", out raw);
         string sub = (raw ?? "").Trim().ToLowerInvariant();
         int total = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
-        int claimed = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
+        int used = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
+        int earned = Math.Max(Math.Max(used, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), total / 10);
+
         if (sub == "" || sub == "credits")
         {
-            CPH.SendMessage($"🎮 @{name}: {Math.Max(0, total / 10 - claimed)} game credits available ({total} lifetime check-ins). Submit with !game Game Title. View current wheel: !wheel list");
+            CPH.SendMessage($"🎮 @{name}: {earned - used} game credits available (earned {earned}, used {used}, lifetime check-ins {total}). Submit: !game Game Title. Current wheel: !wheel list");
             return true;
         }
-        if (sub != "list") { CPH.SendMessage("Use !wheel credits or !wheel list"); return true; }
-        string json = CPH.GetGlobalVar<string>("ci_wheel_entries_json", true);
-        List<WheelEntry> entries;
-        try { entries = String.IsNullOrWhiteSpace(json) ? new List<WheelEntry>() : JsonConvert.DeserializeObject<List<WheelEntry>>(json) ?? new List<WheelEntry>(); }
-        catch (Exception ex) { CPH.LogError("Wheel entries JSON invalid: " + ex.Message); CPH.SendMessage("Wheel data is currently unavailable. Contact a moderator."); return false; }
-        var month = EasternTime(DateTimeOffset.UtcNow).ToString("yyyy-MM");
-        var current = entries.Where(e => e.month == month).ToList();
-        if (current.Count == 0) CPH.SendMessage("🎮 No games submitted to this month's wheel yet.");
-        else
+        if (sub != "list")
         {
-            // Twitch chat has a message length limit. Show the first 5 and the total.
-            var first = current.Take(5).Select(e => $"{e.game} ({e.user}, {e.date})");
-            CPH.SendMessage($"🎮 {month} wheel ({current.Count} entries): " + string.Join(" | ", first) + (current.Count > 5 ? $" | +{current.Count - 5} more. Full list stored in ci_wheel_entries_json." : ""));
+            CPH.SendMessage("Use !wheel, !wheel credits or !wheel list");
+            return true;
         }
+
+        string month = EasternTime(DateTimeOffset.UtcNow).ToString("yyyy-MM");
+        string key = "ci_wheel_month_" + month.Replace('-', '_');
+        string json = CPH.GetGlobalVar<string>(key, true);
+        List<WheelEntry> entries;
+        try
+        {
+            entries = String.IsNullOrWhiteSpace(json)
+                ? new List<WheelEntry>()
+                : JsonConvert.DeserializeObject<List<WheelEntry>>(json) ?? new List<WheelEntry>();
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("Wheel ledger " + key + " invalid: " + ex.Message);
+            CPH.SendMessage("Wheel data is unavailable. Contact a moderator.");
+            return false;
+        }
+        if (entries.Count == 0)
+        {
+            CPH.SendMessage("🎮 No games submitted to this month's wheel yet.");
+            return true;
+        }
+        var first = entries.Take(5).Select(e => $"{e.game} ({e.user}, {e.date})");
+        CPH.SendMessage($"🎮 {month} wheel ({entries.Count} entries): " + string.Join(" | ", first)
+                        + (entries.Count > 5 ? $" | +{entries.Count - 5} more; export the monthly ledger for all entries." : ""));
         return true;
     }
+
     private static DateTimeOffset EasternTime(DateTimeOffset utc)
     {
         try { return TimeZoneInfo.ConvertTime(utc, TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time")); }
