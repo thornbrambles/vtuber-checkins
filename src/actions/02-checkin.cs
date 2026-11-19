@@ -43,7 +43,8 @@ public class CPHInline
         }
 
         int previous = CPH.GetTwitchUserVarById<int>(userId, "ci_last_stream", true);
-        if (previous == streamId)
+        int lastRewardStream = CPH.GetTwitchUserVarById<int>(userId, "ci_reward_last_stream", true);
+        if (previous == streamId || lastRewardStream == streamId)
         {
             CPH.SendMessage($"@{userName}, you're already checked in for this stream! This duplicate redemption will be refunded.");
             CancelRedemption("duplicate check-in");
@@ -56,10 +57,13 @@ public class CPHInline
         int count = CPH.GetGlobalVar<int>("ci_stream_count", true) + 1;
 
         CPH.SetTwitchUserVarById(userId, "ci_last_stream", streamId, true);
+        // Immutable once-per-stream redemption marker; admin attendance resets do not clear it.
+        CPH.SetTwitchUserVarById(userId, "ci_reward_last_stream", streamId, true);
         CPH.SetTwitchUserVarById(userId, "ci_total", total, true);
         CPH.SetTwitchUserVarById(userId, "ci_streak", streak, true);
         int usedCredits = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_claimed", true));
-        int earnedCredits = Math.Max(Math.Max(usedCredits, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_earned", true)), total / 10);
+        int previousEarnedCredits = Math.Max(usedCredits, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_earned", true));
+        int earnedCredits = Math.Max(previousEarnedCredits, total / 10);
         CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", earnedCredits, true);
         CPH.SetGlobalVar("ci_stream_count", count, true);
 
@@ -75,7 +79,7 @@ public class CPHInline
         }
 
         CPH.SendMessage($"🌿 @{userName} checked in! Lifetime: {total} | Streak: {streak} | Here today: {count}");
-        if (total % 10 == 0)
+        if (earnedCredits > previousEarnedCredits)
             CPH.SendMessage($"🎮 @{userName} reached {total} check-ins and earned a game submission! Use !game Game Title.");
         if (unlocked != "")
             CPH.SendMessage($"🏆 @{userName} unlocked the {unlocked} badge for {total} check-ins!");
