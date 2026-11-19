@@ -1,6 +1,10 @@
 # Installation — VTuber Check-ins v5
 
+**Upgrading from deployed v3?** Begin with [V3-MIGRATION-BACKUP-DEBUG.md](V3-MIGRATION-BACKUP-DEBUG.md). You can migrate directly from v3; export existing state before changing actions.
+
 **Upgrading from v4?** Read [REFRACTOR.md](REFRACTOR.md) and run the one-time wheel migration **before installing the new v5 wheel scripts**. The original all-month wheel JSON must be migrated or old entries will not appear in monthly lists.
+
+**Manual-only maintenance actions:** `09-export-data.cs` backs up this project's persistent data, `10-import-data.cs` validates and restores on explicit opt-in, and `11-debug-admin.cs` previews/applies offline edits with an explicit enable flag. **Never attach chat or Twitch triggers to these actions.**
 
 **All commands and permissions:** [COMMANDS.md](COMMANDS.md).
 
