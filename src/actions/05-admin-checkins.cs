@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 public class CPHInline
 {
@@ -133,10 +134,35 @@ public class CPHInline
         if (badge == "None") CPH.UnsetTwitchUserVarById(id, "ci_badge", true);
         else CPH.SetTwitchUserVarById(id, "ci_badge", badge, true);
 
+        string auditId="admin-"+Guid.NewGuid().ToString("N");
+        AppendAudit(new {
+            id=auditId,type="ADMIN_EDIT",atUtc=DateTimeOffset.UtcNow.ToString("o"),
+            actorId,actor,userId=id,userName=name,operation,amount,
+            totalBefore=oldTotal,totalAfter=total,streakBefore=oldStreak,streakAfter=streak
+        },auditId);
         CPH.LogInfo($"CI ADMIN actor={actor}({actorId}) operation={operation} target={name}({id}) amount={amount} total:{oldTotal}->{total} streak:{oldStreak}->{streak}");
         CPH.SendMessage($"[Check-in admin] @{name}: {operation} completed by @{actor}. Lifetime {oldTotal}->{total}; streak {oldStreak}->{streak}; badge {badge}.");
         Publish(streamId);
         return true;
+    }
+
+    // Audit is derived history, not an atomic database transaction. Counters
+    // remain the primary state; reconciliation detects missing events.
+    private void AppendAudit(object record, string eventId)
+    {
+        string month = DateTimeOffset.UtcNow.ToString("yyyy_MM");
+        string key = "ci_events_month_" + month;
+        try
+        {
+            string raw = CPH.GetGlobalVar<string>(key, true);
+            var events = String.IsNullOrWhiteSpace(raw) ? new JArray() : JArray.Parse(raw);
+            if (!events.OfType<JObject>().Any(e => (string)e["id"] == eventId))
+            {
+                events.Add(JObject.FromObject(record));
+                CPH.SetGlobalVar(key, events.ToString(Formatting.None), true);
+            }
+        }
+        catch (Exception ex) { CPH.LogError("CHECKIN AUDIT FAILED: " + ex.Message); }
     }
 
     private static string Badge(int total)
