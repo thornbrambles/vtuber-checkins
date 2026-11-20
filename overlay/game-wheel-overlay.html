@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Grove - Game Wheel</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:#f8fcf5;font-family:Inter,"Segoe UI",Arial,sans-serif}
+#stage{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .3s ease,visibility .3s}
+#stage.visible{opacity:1;visibility:visible}
+#heading{font-size:21px;font-weight:850;letter-spacing:2px;text-transform:uppercase;color:#bce4c1;text-shadow:0 2px 8px #000}
+#month{margin:8px 0;font-weight:850;font-size:34px;text-shadow:0 3px 10px #000}
+#container{position:relative;height:min(69vh,810px);width:min(69vh,810px);filter:drop-shadow(0 16px 26px #0009)}
+#wheel{height:100%;width:100%;display:block;transform-origin:center;will-change:transform}
+#pointer{position:absolute;z-index:3;top:-5px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:23px solid transparent;border-right:23px solid transparent;border-top:49px solid #f7d98e;filter:drop-shadow(0 3px 4px #000a)}
+#hub{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:64px;height:64px;border-radius:50%;border:7px solid #204b33;background:#c7e5b8;box-shadow:0 2px 8px #0008}
+#subhead{font-size:18px;text-shadow:0 2px 10px #000;margin-top:14px}
+#winner{position:absolute;z-index:4;left:50%;top:50%;transform:translate(-50%,-50%) scale(.93);width:min(690px,77vw);text-align:center;background:rgba(18,42,32,.97);border:3px solid #eed18d;border-radius:22px;padding:26px 34px;box-shadow:0 20px 55px #000b;opacity:0;visibility:hidden;transition:opacity .4s ease,transform .4s ease,visibility .4s}
+#winner.show{opacity:1;visibility:visible;transform:translate(-50%,-50%) scale(1)}
+#winner-label{font-size:16px;color:#f5d995;font-weight:850;text-transform:uppercase;letter-spacing:2.5px}
+#winner-game{font-weight:900;font-size:clamp(28px,3.6vw,58px);margin:12px 0;overflow-wrap:anywhere}
+#winner-user{font-size:21px;color:#bce4c1}
+#status{position:absolute;bottom:10px;left:10px;opacity:0;font-size:12px}
+</style>
+</head><body>
+<section id="stage">
+  <div id="heading">The Grove · Game Wheel</div>
+  <div id="month"></div>
+  <div id="container"><canvas id="wheel" width="900" height="900"></canvas><div id="pointer"></div><div id="hub"></div>
+    <div id="winner"><div id="winner-label">The wheel picked</div><div id="winner-game"></div><div id="winner-user"></div></div>
+  </div>
+  <div id="subhead"></div>
+</section><div id="status"></div>
+<script>
+"use strict";
+// Private local Streamer.bot WebSocket, same endpoint as checkin-overlay.html.
+const WS_URL="ws://127.0.0.1:8080/", REQUEST_ID="wheel-spin-state";
+const $=id=>document.getElementById(id), canvas=$("wheel"), ctx=canvas.getContext("2d");
+const TAU=2*Math.PI;
+let socket=null,requestPending=false,requestAt=0,state=null,lastEvent="",raf=null;
+function valid(d){
+  return d&&typeof d==="object"&&typeof d.eventId==="string"&&
+    Array.isArray(d.choices)&&d.choices.length>0&&d.choices.length<=200&&
+    Number.isInteger(d.selectedIndex)&&d.selectedIndex>=0&&d.selectedIndex<d.choices.length&&
+    Number.isFinite(Number(d.startedAtMs))&&Number(d.durationMs)>=1000&&Number(d.durationMs)<=30000&&
+    Number(d.visibleMs)>=Number(d.durationMs)&&Number(d.visibleMs)<=60000&&
+    d.winner&&d.choices[d.selectedIndex].id===d.winner.id&&
+    d.choices.every(x=>x&&typeof x.game==="string"&&typeof x.user==="string");
+}
+function draw(items){
+  const n=items.length,step=TAU/n,colors=["#376954","#81a885","#264a3a","#bad6a2","#4c806e","#9abf9c","#375c4a","#d1c18b"];
+  ctx.clearRect(0,0,900,900);
+  items.forEach((item,i)=>{
+    const a=-Math.PI/2-step/2+i*step;
+    ctx.beginPath();ctx.moveTo(450,450);ctx.arc(450,450,413,a,a+step);ctx.closePath();
+    ctx.fillStyle=colors[i%colors.length];ctx.fill();ctx.strokeStyle="#173226";ctx.lineWidth=n>30?1.2:3;ctx.stroke();
+    if(n>65)return;
+    ctx.save();ctx.translate(450,450);ctx.rotate(a+step/2);ctx.translate(265,0);
+    const angle=((a+step/2)%TAU+TAU)%TAU;
+    if(angle>Math.PI/2&&angle<Math.PI*1.5)ctx.rotate(Math.PI);
+    ctx.fillStyle="white";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.font="bold "+(n>30?13:n>18?16:n>9?20:25)+"px Segoe UI,Arial,sans-serif";
+    const max=n>30?8:n>18?11:n>9?17:23, title=item.game;
+    ctx.fillText(title.length>max?title.slice(0,max-1)+"…":title,0,0,240);ctx.restore();
+  });
+  ctx.beginPath();ctx.arc(450,450,413,0,TAU);ctx.strokeStyle="#d4e7b3";ctx.lineWidth=14;ctx.stroke();
+}
+function hide(){
+  $("stage").classList.remove("visible");$("winner").classList.remove("show");
+  if(raf!==null){cancelAnimationFrame(raf);raf=null}
+}
+function frame(){
+  raf=null;
+  if(!state||state.hidden){hide();return}
+  const elapsed=Date.now()-Number(state.startedAtMs),dur=Number(state.durationMs),visible=Number(state.visibleMs);
+  if(elapsed<0||elapsed>=visible){hide();return}
+  $("stage").classList.add("visible");
+  const t=Math.min(1,Math.max(0,elapsed/dur));
+  // Slice 0 is centered at the top. A positive clockwise rotation of
+  // whole turns + (n-index)/n turns brings the saved winner to the pointer.
+  const rotation=(7+((state.choices.length-state.selectedIndex)%state.choices.length)/state.choices.length)*TAU*(1-Math.pow(1-t,5));
+  canvas.style.transform="rotate("+rotation+"rad)";
+  $("winner").classList.toggle("show",t>=1);
+  $("subhead").textContent=t>=1?"Winner selected":state.choices.length+" entries";
+  raf=requestAnimationFrame(frame);
+}
+function accept(data){
+  if(!valid(data))return;
+  if(data.eventId!==lastEvent){
+    lastEvent=data.eventId;state=data;
+    const parts=data.month.split("-");
+    $("month").textContent=new Date(Number(parts[0]),Number(parts[1])-1,1).toLocaleString("en-US",{month:"long",year:"numeric"});
+    $("winner-game").textContent=data.winner.game;
+    $("winner-user").textContent=data.winner.user?"Submitted by "+data.winner.user:"";
+    draw(data.choices);
+    if(raf!==null){cancelAnimationFrame(raf);raf=null}
+    raf=requestAnimationFrame(frame);
+  }else if(data.hidden&&!state.hidden){state=data;hide()}
+}
+function poll(){
+  if(!socket||socket.readyState!==WebSocket.OPEN||requestPending)return;
+  requestPending=true;requestAt=Date.now();
+  socket.send(JSON.stringify({request:"GetGlobal",id:REQUEST_ID,variable:"ci_wheel_spin_overlay_json",persisted:true}));
+}
+function connect(){
+  socket=new WebSocket(WS_URL);
+  socket.onopen=()=>{requestPending=false;poll()};
+  socket.onmessage=event=>{
+    let m;try{m=JSON.parse(event.data)}catch(_){return}
+    if(m.id!==REQUEST_ID)return;requestPending=false;
+    if(m.status!=="ok"||!m.variable)return;
+    try{accept(typeof m.variable.value==="string"?JSON.parse(m.variable.value):m.variable.value)}
+    catch(e){$("status").textContent="Wheel state error: "+e.message}
+  };
+  socket.onclose=()=>{requestPending=false;hide();setTimeout(connect,3000)};
+  socket.onerror=()=>{$("status").textContent="WebSocket error"};
+}
+setInterval(()=>{if(requestPending&&Date.now()-requestAt>2500)requestPending=false;poll()},650);
+connect();
+</script></body></html>

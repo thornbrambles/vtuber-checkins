@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 public class CPHInline
 {
@@ -9,8 +10,13 @@ public class CPHInline
     // chat celebrations and OBS toast notifications, NOT Twitch Channel Points.
     private static readonly int[] Thresholds = { 5, 10, 25, 50, 100, 250, 500 };
     private static readonly string[] Badges = {
-        "Sprout", "Sapling", "Grove Keeper", "Forest Friend",
-        "Ancient Oak", "Woodland Guardian", "Legend of the Grove"
+        "Sprout",
+        "Sapling",
+        "Grove Keeper",
+        "Forest Friend",
+        "Ancient Oak",
+        "Woodland Guardian",
+        "Legend of the Grove"
     };
 
     public bool Execute()
@@ -37,16 +43,30 @@ public class CPHInline
         int streamId = CPH.GetGlobalVar<int>("ci_stream_id", true);
         if (streamId <= 0)
         {
-            CPH.SendMessage("Check-ins aren't open yet. Your Channel Points will be refunded.");
-            CancelRedemption("stream not initialized");
+            bool refunded = CancelRedemption("stream not initialized");
+            CPH.SendMessage(refunded
+                ? $"@{userName}, check-ins aren't open yet. Your points were refunded."
+                : $"@{userName}, check-ins aren't open yet. Couldn't refund your points — please ask a mod.");
             return true;
         }
 
         int previous = CPH.GetTwitchUserVarById<int>(userId, "ci_last_stream", true);
-        if (previous == streamId)
+        int lastRewardStream = CPH.GetTwitchUserVarById<int>(userId, "ci_reward_last_stream", true);
+        if (previous == streamId || lastRewardStream == streamId)
         {
-            CPH.SendMessage($"@{userName}, you're already checked in for this stream! This duplicate redemption will be refunded.");
-            CancelRedemption("duplicate check-in");
+            string lastRedemptionId = CPH.GetTwitchUserVarById<string>(userId, "ci_last_redemption_id", true);
+            if (lastRedemptionId == redemptionId)
+            {
+                // The same redemption may be replayed if fulfillment previously failed.
+                // Do NOT refund an already-recorded successful check-in.
+                if (!CPH.TwitchRedemptionFulfill(rewardId, redemptionId))
+                    CPH.LogWarn("Previously recorded redemption " + redemptionId + " could not be fulfilled. Inspect the queue.");
+                return true;
+            }
+            bool refunded = CancelRedemption("duplicate check-in");
+            CPH.SendMessage(refunded
+                ? $"@{userName}, you're already checked in! Your points were refunded."
+                : $"@{userName}, you're already checked in. Couldn't refund the extra redemption — please ask a mod.");
             return true;
         }
 
@@ -56,8 +76,15 @@ public class CPHInline
         int count = CPH.GetGlobalVar<int>("ci_stream_count", true) + 1;
 
         CPH.SetTwitchUserVarById(userId, "ci_last_stream", streamId, true);
+        // Immutable once-per-stream redemption marker; admin attendance resets do not clear it.
+        CPH.SetTwitchUserVarById(userId, "ci_reward_last_stream", streamId, true);
+        CPH.SetTwitchUserVarById(userId, "ci_last_redemption_id", redemptionId, true);
         CPH.SetTwitchUserVarById(userId, "ci_total", total, true);
         CPH.SetTwitchUserVarById(userId, "ci_streak", streak, true);
+        int usedCredits = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_claimed", true));
+        int previousEarnedCredits = Math.Max(usedCredits, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_earned", true));
+        int earnedCredits = Math.Max(previousEarnedCredits, total / 10);
+        CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", earnedCredits, true);
         CPH.SetGlobalVar("ci_stream_count", count, true);
 
         string unlocked = "";
@@ -71,12 +98,22 @@ public class CPHInline
             }
         }
 
-        CPH.SendMessage($"🌿 @{userName} checked in! Lifetime: {total} | Streak: {streak} | Here today: {count}");
-        if (total % 10 == 0)
-            CPH.SendMessage($"🎮 @{userName} reached {total} check-ins and earned a game submission! Use !game Game Title.");
-        if (unlocked != "")
-            CPH.SendMessage($"🏆 @{userName} unlocked the {unlocked} badge for {total} check-ins!");
+        CPH.SendMessage($"🌿 @{userName} checked in! {total} total check-ins, a {streak}-stream streak, and {count} people checked in this stream.");
 
+        if (unlocked != "")
+            CPH.SendMessage($"🏆 @{userName} got the {unlocked} badge!");
+
+        if (earnedCredits > previousEarnedCredits)
+        {
+            int availableCredits = Math.Max(0, earnedCredits - usedCredits);
+            CPH.SendMessage($"🎮 @{userName} earned a game pick! {availableCredits} left. Use !addgame <title>.");
+        }
+
+        AppendAudit(new {
+            id="checkin-"+redemptionId, type="CHECKIN", atUtc=DateTimeOffset.UtcNow.ToString("o"),
+            userId, userName, streamId, totalAfter=total, streakAfter=streak,
+            creditEarned=earnedCredits
+        }, "checkin-"+redemptionId);
         CPH.SetGlobalVar("ci_last_checkin_at_ms", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), true);
         Publish(streamId, count, userName, unlocked, total, streak);
         if (!CPH.TwitchRedemptionFulfill(rewardId, redemptionId))
@@ -85,15 +122,37 @@ public class CPHInline
         return true;
     }
 
-    private void CancelRedemption(string reason)
+    // Audit is derived history, not an atomic database transaction. Counters
+    // remain the primary state; reconciliation detects missing events.
+    private void AppendAudit(object record, string eventId)
+    {
+        string month = DateTimeOffset.UtcNow.ToString("yyyy_MM");
+        string key = "ci_events_month_" + month;
+        try
+        {
+            string raw = CPH.GetGlobalVar<string>(key, true);
+            var events = String.IsNullOrWhiteSpace(raw) ? new JArray() : JArray.Parse(raw);
+            if (!events.OfType<JObject>().Any(e => (string)e["id"] == eventId))
+            {
+                events.Add(JObject.FromObject(record));
+                CPH.SetGlobalVar(key, events.ToString(Formatting.None), true);
+            }
+        }
+        catch (Exception ex) { CPH.LogError("CHECKIN AUDIT FAILED: " + ex.Message); }
+    }
+
+    private bool CancelRedemption(string reason)
     {
         string rewardId, redemptionId;
         if (CPH.TryGetArg("rewardId", out rewardId) && !String.IsNullOrWhiteSpace(rewardId) &&
             CPH.TryGetArg("redemptionId", out redemptionId) && !String.IsNullOrWhiteSpace(redemptionId))
         {
-            if (!CPH.TwitchRedemptionCancel(rewardId, redemptionId))
-                CPH.LogWarn("Unable to refund redemption " + redemptionId + " (" + reason + "). Check Twitch redemption queue.");
+            bool canceled = CPH.TwitchRedemptionCancel(rewardId, redemptionId);
+            if (!canceled)
+                CPH.LogWarn("Unable to cancel redemption " + redemptionId + " (" + reason + "). Check Twitch redemption queue.");
+            return canceled;
         }
+        return false;
     }
 
     private void Publish(int streamId, int count, string latest, string milestone, int total, int streak)

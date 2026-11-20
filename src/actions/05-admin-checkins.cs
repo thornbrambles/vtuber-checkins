@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 public class CPHInline
 {
@@ -9,8 +10,13 @@ public class CPHInline
     // Syntax: !checkinadmin view|set|add|remove|reset|streak @username [number]
     private static readonly int[] Thresholds = { 5, 10, 25, 50, 100, 250, 500 };
     private static readonly string[] Badges = {
-        "Sprout", "Sapling", "Grove Keeper", "Forest Friend", "Ancient Oak",
-        "Woodland Guardian", "Legend of the Grove"
+        "Sprout",
+        "Sapling",
+        "Grove Keeper",
+        "Forest Friend",
+        "Ancient Oak",
+        "Woodland Guardian",
+        "Legend of the Grove"
     };
     private const int MaxTotal = 1000000;
 
@@ -66,11 +72,13 @@ public class CPHInline
         int last = CPH.GetTwitchUserVarById<int>(id, "ci_last_stream", true);
         int oldTotal = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
         int oldStreak = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_streak", true));
+        int usedCredits = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
+        int priorEarnedCredits = Math.Max(Math.Max(usedCredits, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), oldTotal / 10);
         bool checkedIn = streamId > 0 && last == streamId;
 
         if (operation == "view")
         {
-            CPH.SendMessage($"[Check-in admin] @{name}: total={oldTotal}, streak={oldStreak}, lastStream={last}, checkedInNow={checkedIn}, badge={Badge(oldTotal)}");
+            CPH.SendMessage($"[Check-in admin] @{name}: total={oldTotal}, streak={oldStreak}, lastStream={last}, checkedInNow={checkedIn}, badge={Badge(oldTotal)}, wheelCredits={priorEarnedCredits-usedCredits}");
             return true;
         }
         int amount = 0;
@@ -106,7 +114,8 @@ public class CPHInline
             streak = 0;
             clearAttendance = true;
         }
-        // Reset / zeroing removes this stream's attendance and permits re-check-in.
+        // Reset / zeroing removes displayed attendance. The independent redemption marker
+        // still prevents a second Channel Points check-in during this stream.
         if (clearAttendance && checkedIn)
         {
             int count = Math.Max(0, CPH.GetGlobalVar<int>("ci_stream_count", true) - 1);
@@ -114,8 +123,10 @@ public class CPHInline
         }
         if (clearAttendance)
             CPH.UnsetTwitchUserVarById(id, "ci_last_stream", true);
-        if (operation == "reset" || (clearAttendance && total == 0))
-            CPH.SetTwitchUserVarById(id, "ci_wheel_claimed", 0, true);
+        // Wheel credits already used are NEVER reset. Existing submissions remain in history.
+        // Earned entitlement is a lifetime high-water mark, not derived solely from
+        // the current editable check-in total.
+        CPH.SetTwitchUserVarById(id, "ci_wheel_earned", Math.Max(priorEarnedCredits, total / 10), true);
 
         CPH.SetTwitchUserVarById(id, "ci_total", total, true);
         CPH.SetTwitchUserVarById(id, "ci_streak", streak, true);
@@ -123,10 +134,35 @@ public class CPHInline
         if (badge == "None") CPH.UnsetTwitchUserVarById(id, "ci_badge", true);
         else CPH.SetTwitchUserVarById(id, "ci_badge", badge, true);
 
+        string auditId="admin-"+Guid.NewGuid().ToString("N");
+        AppendAudit(new {
+            id=auditId,type="ADMIN_EDIT",atUtc=DateTimeOffset.UtcNow.ToString("o"),
+            actorId,actor,userId=id,userName=name,operation,amount,
+            totalBefore=oldTotal,totalAfter=total,streakBefore=oldStreak,streakAfter=streak
+        },auditId);
         CPH.LogInfo($"CI ADMIN actor={actor}({actorId}) operation={operation} target={name}({id}) amount={amount} total:{oldTotal}->{total} streak:{oldStreak}->{streak}");
         CPH.SendMessage($"[Check-in admin] @{name}: {operation} completed by @{actor}. Lifetime {oldTotal}->{total}; streak {oldStreak}->{streak}; badge {badge}.");
         Publish(streamId);
         return true;
+    }
+
+    // Audit is derived history, not an atomic database transaction. Counters
+    // remain the primary state; reconciliation detects missing events.
+    private void AppendAudit(object record, string eventId)
+    {
+        string month = DateTimeOffset.UtcNow.ToString("yyyy_MM");
+        string key = "ci_events_month_" + month;
+        try
+        {
+            string raw = CPH.GetGlobalVar<string>(key, true);
+            var events = String.IsNullOrWhiteSpace(raw) ? new JArray() : JArray.Parse(raw);
+            if (!events.OfType<JObject>().Any(e => (string)e["id"] == eventId))
+            {
+                events.Add(JObject.FromObject(record));
+                CPH.SetGlobalVar(key, events.ToString(Formatting.None), true);
+            }
+        }
+        catch (Exception ex) { CPH.LogError("CHECKIN AUDIT FAILED: " + ex.Message); }
     }
 
     private static string Badge(int total)

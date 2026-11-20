@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 
 public class CPHInline
 {
+    private const int MonthlyLimit = 3; // Per viewer, Eastern calendar month.
     private class WheelEntry
     {
         public string id { get; set; }
@@ -14,39 +15,102 @@ public class CPHInline
         public string date { get; set; }
         public string month { get; set; }
         public string utc { get; set; }
+        public bool removed { get; set; }
+        public string status { get; set; }
+        public string slotId { get; set; }
+        public string replacedBy { get; set; }
     }
 
     public bool Execute()
     {
-        string id, name;
-        if (!CPH.TryGetArg("userId", out id) || String.IsNullOrWhiteSpace(id) ||
-            !CPH.TryGetArg("userName", out name) || String.IsNullOrWhiteSpace(name)) return false;
-        string raw;
-        CPH.TryGetArg("rawInput", out raw);
-        string sub = (raw ?? "").Trim().ToLowerInvariant();
-        int total = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
-        int claimed = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
-        if (sub == "" || sub == "credits")
+        if (!CPH.GetGlobalVar<bool>("ci_wheel_legacy_migrated", true))
         {
-            CPH.SendMessage($"🎮 @{name}: {Math.Max(0, total / 10 - claimed)} game credits available ({total} lifetime check-ins). Submit with !game Game Title. View current wheel: !wheel list");
+            CPH.SendMessage("The monthly game wheel needs one-time migration/setup by a moderator before it can be used.");
             return true;
         }
-        if (sub != "list") { CPH.SendMessage("Use !wheel credits or !wheel list"); return true; }
-        string json = CPH.GetGlobalVar<string>("ci_wheel_entries_json", true);
-        List<WheelEntry> entries;
-        try { entries = String.IsNullOrWhiteSpace(json) ? new List<WheelEntry>() : JsonConvert.DeserializeObject<List<WheelEntry>>(json) ?? new List<WheelEntry>(); }
-        catch (Exception ex) { CPH.LogError("Wheel entries JSON invalid: " + ex.Message); CPH.SendMessage("Wheel data is currently unavailable. Contact a moderator."); return false; }
-        var month = EasternTime(DateTimeOffset.UtcNow).ToString("yyyy-MM");
-        var current = entries.Where(e => e.month == month).ToList();
-        if (current.Count == 0) CPH.SendMessage("🎮 No games submitted to this month's wheel yet.");
-        else
+        string id, name, raw;
+        if (!CPH.TryGetArg("userId", out id) || String.IsNullOrWhiteSpace(id) ||
+            !CPH.TryGetArg("userName", out name) || String.IsNullOrWhiteSpace(name))
+            return false;
+        CPH.TryGetArg("rawInput", out raw);
+        string sub = (raw ?? "").Trim().ToLowerInvariant();
+        string pending = CPH.GetTwitchUserVarById<string>(id, "ci_wheel_pending_json", true);
+        if (!String.IsNullOrWhiteSpace(pending))
         {
-            // Twitch chat has a message length limit. Show the first 5 and the total.
-            var first = current.Take(5).Select(e => $"{e.game} ({e.user}, {e.date})");
-            CPH.SendMessage($"🎮 {month} wheel ({current.Count} entries): " + string.Join(" | ", first) + (current.Count > 5 ? $" | +{current.Count - 5} more. Full list stored in ci_wheel_entries_json." : ""));
+            CPH.SendMessage($"@{name}, an earlier game submission is pending recovery. Run !addgame with no title to finish it, then check !wheel again.");
+            return true;
         }
+        int total = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
+        int used = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
+        int earned = Math.Max(Math.Max(used, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), total / 10);
+
+        if (sub != "" && sub != "credits" && sub != "list")
+        {
+            CPH.SendMessage("Use !wheel, !wheel credits or !wheel list");
+            return true;
+        }
+
+        string month = EasternTime(DateTimeOffset.UtcNow).ToString("yyyy-MM");
+        string key = "ci_wheel_month_" + month.Replace('-', '_');
+        string json = CPH.GetGlobalVar<string>(key, true);
+        List<WheelEntry> entries;
+        try
+        {
+            entries = String.IsNullOrWhiteSpace(json)
+                ? new List<WheelEntry>()
+                : JsonConvert.DeserializeObject<List<WheelEntry>>(json) ?? new List<WheelEntry>();
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("Wheel ledger " + key + " invalid: " + ex.Message);
+            CPH.SendMessage("Wheel data is unavailable. Contact a moderator.");
+            return false;
+        }
+        if (entries.Any(e => e == null || String.IsNullOrWhiteSpace(e.userId)))
+        {
+            CPH.LogError("Malformed wheel entries in " + key);
+            CPH.SendMessage("Wheel data needs a mod to take a look.");
+            return false;
+        }
+        int monthlyUsed = entries.Where(e => e.userId == id)
+            .Select(e => String.IsNullOrWhiteSpace(e.slotId) ? e.id : e.slotId)
+            .Distinct(StringComparer.Ordinal).Count(); // Replacements share a slot.
+        int monthlyRemaining = Math.Max(0, MonthlyLimit - monthlyUsed);
+        if (sub == "" || sub == "credits")
+        {
+            int pendingCount = entries.Count(e => e.userId == id && e.status == "pending");
+            int rejectedCount = entries.Count(e => e.userId == id && e.status == "rejected" && !e.removed &&
+                String.IsNullOrWhiteSpace(e.replacedBy));
+            if (rejectedCount > 0)
+                CPH.SendMessage($"🎮 @{name}: {earned-used} credits saved. {monthlyUsed}/{MonthlyLimit} picks used this month, {rejectedCount} need replacing. Use !addgame Title.");
+            else
+                CPH.SendMessage($"🎮 @{name}: {earned-used} credits saved. {monthlyUsed}/{MonthlyLimit} games submitted this month" +
+                    (pendingCount > 0 ? $" ({pendingCount} awaiting approval)." : ".") +
+                    (monthlyRemaining > 0 && earned > used ? " Use !addgame Title." : ""));
+            return true;
+        }
+        entries = entries.Where(e => !e.removed &&
+            (String.IsNullOrWhiteSpace(e.status) || e.status == "approved")).ToList();
+        if (entries.Count == 0)
+        {
+            CPH.SendMessage("🎮 No approved games on this month's wheel yet.");
+            return true;
+        }
+        string prefix = $"🎮 {month} wheel ({entries.Count} entries): ";
+        var displayed = new List<string>();
+        foreach (var entry in entries.Take(5))
+        {
+            string item = $"{entry.game} ({entry.user}, {entry.date})";
+            string trial = prefix + String.Join(" | ", displayed.Concat(new[] { item }));
+            if (trial.Length > 390) break;
+            displayed.Add(item);
+        }
+        int more = entries.Count - displayed.Count;
+        CPH.SendMessage(prefix + String.Join(" | ", displayed)
+            + (more > 0 ? $" | +{more} more; export monthly ledger for the rest." : ""));
         return true;
     }
+
     private static DateTimeOffset EasternTime(DateTimeOffset utc)
     {
         try { return TimeZoneInfo.ConvertTime(utc, TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time")); }

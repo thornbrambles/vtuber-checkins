@@ -14,6 +14,13 @@ Thumbs.db
 *.zip
 wheel-*.csv
 wheel-*.json
+checkins-*.json
+import.json
+vtuber-checkins-backups/
+.sandbox/
+reconcile*.json
+restore-plan*.json
+*.sha256
 # Secrets and local configuration
 .env
 .env.*
