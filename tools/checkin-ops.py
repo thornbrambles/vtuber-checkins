@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SCHEMA_VERSION = 1
 BACKUP_FORMAT = "vtuber-checkins-backup"
+MONTHLY_GAME_LIMIT = 3
 USER_INTS = {
     "ci_total", "ci_streak", "ci_last_stream", "ci_wheel_claimed",
     "ci_wheel_earned", "ci_reward_last_stream"
@@ -245,7 +246,6 @@ def sandbox_main(args):
                 raise CheckinError("game needs a title between 2 and 100 characters")
             if viewer["earned"] <= viewer["spent"]:
                 raise CheckinError("No game credits available")
-            viewer["spent"] += 1
             now = dt.datetime.now(dt.timezone.utc)
             try:
                 eastern = ZoneInfo("America/New_York")
@@ -255,6 +255,11 @@ def sandbox_main(args):
                 eastern = dt.timezone.utc
                 print("WARNING: IANA timezone data unavailable; using UTC in sandbox", file=sys.stderr)
             month = now.astimezone(eastern).strftime("%Y-%m")
+            monthly_uses = sum(1 for entry in state["wheel"]
+                               if entry["user"] == name and entry["month"] == month)
+            if monthly_uses >= MONTHLY_GAME_LIMIT:
+                raise CheckinError("Monthly game submission limit reached; credits carry over")
+            viewer["spent"] += 1
             state["wheel"].append({
                 "id": f"sandbox-{len(state['wheel'])+1}",
                 "user": name, "game": args.title, "month": month, "utc": now.isoformat()
