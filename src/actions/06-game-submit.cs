@@ -1,14 +1,17 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 public class CPHInline
 {
-    // This action MUST run in the same BLOCKING queue as check-ins, admin edits,
-    // wheel commands and one-time migration.
-    private const int MonthlyLimit = 3; // Per viewer, Eastern calendar month.
+    // Run on the same BLOCKING queue as wheel commands and moderation.
+    // Eastern Time determines the month; a pending transaction retains its
+    // original month even if recovered after midnight or DST rollover.
+    private const int MonthlyLimit = 3;
+
     private class WheelEntry
     {
         public string id { get; set; }
@@ -18,163 +21,219 @@ public class CPHInline
         public string date { get; set; }
         public string month { get; set; }
         public string utc { get; set; }
+        public string status { get; set; }     // pending | approved | rejected; missing = legacy approved
+        public string slotId { get; set; }     // Stable submission slot, shared by replacements
+        public string replacedBy { get; set; } // Set on rejected entry when replacement is saved
+        public bool removed { get; set; }
     }
     private class PendingSubmission
     {
         public WheelEntry entry { get; set; }
         public int spentBefore { get; set; }
         public int earnedAtSubmission { get; set; }
+        public string replacesId { get; set; }
     }
 
     public bool Execute()
     {
         if (!CPH.GetGlobalVar<bool>("ci_wheel_legacy_migrated", true))
         {
-            CPH.SendMessage("The game wheel needs one-time setup. A moderator must run the wheel migration action before submissions open.");
+            CPH.SendMessage("The game wheel isn't set up yet. Please ask a mod.");
             return true;
         }
-
         string id, name, raw;
         if (!CPH.TryGetArg("userId", out id) || String.IsNullOrWhiteSpace(id) ||
             !CPH.TryGetArg("userName", out name) || String.IsNullOrWhiteSpace(name))
             return false;
         CPH.TryGetArg("rawInput", out raw);
         string game = (raw ?? "").Trim();
-
-        // Finish any interrupted submission BEFORE doing a new one, including
-        // when the user's new command is invalid.
-        if (!RecoverPending(id)) return false;
-
+        // Recovery is a separate operation. Do not process a fresh submission
+        // in the same call as a recovered transaction.
+        string pendingJson = CPH.GetTwitchUserVarById<string>(id, "ci_wheel_pending_json", true);
+        if (!String.IsNullOrWhiteSpace(pendingJson))
+        {
+            bool recovered = RecoverPending(id);
+            if (recovered) CPH.SendMessage($"@{name}, your previous game submission was recovered. Send !addgame again for a new game.");
+            return recovered;
+        }
         if (game.Length < 2 || game.Length > 100 || game.Any(char.IsControl))
         {
-            CPH.SendMessage($"@{name}, use !addgame Game Title (2-100 characters). Example: !addgame Stardew Valley");
-            return true;
-        }
-
-        int total = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
-        int spent = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
-        int earned = Math.Max(Math.Max(spent, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), total / 10);
-
-        if (earned <= spent)
-        {
-            CPH.SendMessage($"@{name}, no wheel credits available (earned {earned}, used {spent}). Use !checkins for your stats.");
+            CPH.SendMessage($"@{name}, use !addgame Game Title. Example: !addgame Stardew Valley");
             return true;
         }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        DateTimeOffset local = EasternTime(now);
+        DateTimeOffset eastern = EasternTime(now);
+        string month = eastern.ToString("yyyy-MM");
+        string ledgerKey = "ci_wheel_month_" + eastern.ToString("yyyy_MM");
         string msgId;
         CPH.TryGetArg("msgId", out msgId);
         string entryId = String.IsNullOrWhiteSpace(msgId) ? Guid.NewGuid().ToString("N") : "chat-" + msgId;
-        // A monthly submission always uses the ledger month assigned to it.
-        // Count ALL recorded entries, including moderator-hidden games. Soft
-        // deletion does not free a slot or refund a spent credit.
-        string existingKey = "ci_wheel_month_" + local.ToString("yyyy_MM");
-        List<WheelEntry> existing;
+
+        // Duplicate Twitch delivery MUST be checked before the credit or
+        // monthly allowance. Scan every partition, not just today's month:
+        // replay after midnight must never consume an additional credit.
         try
         {
-            string existingJson = CPH.GetGlobalVar<string>(existingKey, true);
-            existing = String.IsNullOrWhiteSpace(existingJson)
-                ? new List<WheelEntry>()
-                : JsonConvert.DeserializeObject<List<WheelEntry>>(existingJson) ?? new List<WheelEntry>();
-            if (existing.Any(x => x == null || String.IsNullOrWhiteSpace(x.userId)))
-                throw new InvalidOperationException("Invalid monthly entry.");
+            foreach (var variable in CPH.GetGlobalVarValues(true))
+            {
+                if (variable == null || !Regex.IsMatch(variable.VariableName ?? "", @"^ci_wheel_month_\d{4}_\d{2}$")) continue;
+                var past = Load(variable.VariableName);
+                if (past.Any(x => x.id == entryId))
+                {
+                    CPH.LogInfo("Ignoring duplicate !addgame event " + entryId);
+                    return true;
+                }
+            }
         }
         catch (Exception ex)
         {
-            CPH.LogError("Cannot check monthly wheel ledger: " + ex.Message);
-            CPH.SendMessage("Wheel entries are unavailable right now. Please ask a mod.");
+            CPH.LogError("Unable to scan submission IDs: " + ex.Message);
+            return false; // Fail closed rather than risk double-spending.
+        }
+
+        List<WheelEntry> entries;
+        try { entries = Load(ledgerKey); }
+        catch (Exception ex)
+        {
+            CPH.LogError("Cannot load monthly wheel: " + ex.Message);
+            CPH.SendMessage("Wheel entries are unavailable. Please ask a mod.");
             return false;
         }
-        // Twitch may redeliver a chat event after a restart.
-        if (existing.Any(x => x.id == entryId))
-        {
-            CPH.LogInfo("Ignoring duplicate !addgame event " + entryId);
-            return true;
-        }
-        int submittedThisMonth = existing.Count(x => x.userId == id);
-        if (submittedThisMonth >= MonthlyLimit)
-        {
-            CPH.SendMessage($"@{name}, you've used all {MonthlyLimit} game picks for {local:MMMM}. Unused credits carry over to next month.");
-            return true;
-        }
-        var entry = new WheelEntry {
-            id = entryId, userId = id, user = name,
-            game = game, date = local.ToString("yyyy-MM-dd"),
-            month = local.ToString("yyyy-MM"), utc = now.ToString("o")
-        };
 
-        var pending = new PendingSubmission { entry = entry, spentBefore = spent, earnedAtSubmission = earned };
-        // One durable recovery record per user makes multi-variable writes recoverable.
+        // A rejected entry can be replaced within the SAME month without
+        // spending another credit or consuming a fourth monthly slot.
+        WheelEntry rejected = entries.FirstOrDefault(x =>
+            x.userId == id && x.status == "rejected" && String.IsNullOrWhiteSpace(x.replacedBy) && !x.removed);
+        string normalized = Normalize(game);
+        if (entries.Any(x =>
+            !x.removed && x.id != (rejected == null ? "" : rejected.id) &&
+            (String.IsNullOrWhiteSpace(x.status) || x.status == "approved" || x.status == "pending") &&
+            Normalize(x.game) == normalized))
+        {
+            CPH.SendMessage($"@{name}, '{game}' is already on this month's list. Try a different game.");
+            return true;
+        }
+
+        int usedSlots = entries.Where(x => x.userId == id)
+            .Select(x => String.IsNullOrWhiteSpace(x.slotId) ? x.id : x.slotId)
+            .Distinct(StringComparer.Ordinal).Count();
+        if (rejected == null && usedSlots >= MonthlyLimit)
+        {
+            CPH.SendMessage($"@{name}, you've used all {MonthlyLimit} picks for {eastern:MMMM}. Saved credits carry over to next month.");
+            return true;
+        }
+        int total = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
+        int spent = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
+        int earned = Math.Max(Math.Max(spent, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), total / 10);
+        if (rejected == null && earned <= spent)
+        {
+            CPH.SendMessage($"@{name}, no game credits left. Check !checkins.");
+            return true;
+        }
+
+        var entry = new WheelEntry {
+            id = entryId, slotId = rejected == null ? entryId :
+                (String.IsNullOrWhiteSpace(rejected.slotId) ? rejected.id : rejected.slotId),
+            userId = id, user = name, game = game,
+            date = eastern.ToString("yyyy-MM-dd"), month = month,
+            utc = now.ToString("o"), status = "pending"
+        };
+        var pending = new PendingSubmission {
+            entry = entry, spentBefore = spent, earnedAtSubmission = earned,
+            replacesId = rejected == null ? null : rejected.id
+        };
         CPH.SetTwitchUserVarById(id, "ci_wheel_pending_json", JsonConvert.SerializeObject(pending), true);
         if (!RecoverPending(id)) return false;
-        CPH.LogInfo($"WHEEL SUBMIT id={entry.id} user={name}({id}) game={game} date={entry.date} remaining={earned-spent-1}");
-        CPH.SendMessage($"🎮 @{name} added '{game}' to the {local:MMMM yyyy} wheel! {submittedThisMonth + 1}/{MonthlyLimit} picks this month. {earned-spent-1} credits left.");
+        if (rejected != null)
+            CPH.SendMessage($"🎮 @{name} replaced their rejected game with '{game}'. Waiting for mod approval.");
+        else
+            CPH.SendMessage($"🎮 @{name} submitted '{game}'! {usedSlots + 1}/{MonthlyLimit} picks this month. Waiting for mod approval.");
         return true;
+    }
+
+    private static string Normalize(string game)
+    {
+        return Regex.Replace((game ?? "").Trim(), @"\s+", " ").ToLowerInvariant();
+    }
+
+    private List<WheelEntry> Load(string key)
+    {
+        string raw = CPH.GetGlobalVar<string>(key, true);
+        var entries = String.IsNullOrWhiteSpace(raw) ? new List<WheelEntry>()
+            : JsonConvert.DeserializeObject<List<WheelEntry>>(raw);
+        if (entries == null || entries.Any(x => x == null || String.IsNullOrWhiteSpace(x.id) || String.IsNullOrWhiteSpace(x.userId)))
+            throw new InvalidOperationException("Invalid wheel data in " + key);
+        return entries;
     }
 
     private bool RecoverPending(string userId)
     {
         string json = CPH.GetTwitchUserVarById<string>(userId, "ci_wheel_pending_json", true);
         if (String.IsNullOrWhiteSpace(json)) return true;
-
         PendingSubmission pending;
         try { pending = JsonConvert.DeserializeObject<PendingSubmission>(json); }
-        catch (Exception ex) { CPH.LogError("Cannot recover pending wheel submission for " + userId + ": " + ex.Message); return false; }
-
+        catch (Exception ex) { CPH.LogError("Cannot recover pending submission: " + ex.Message); return false; }
+        bool replacement = !String.IsNullOrWhiteSpace(pending == null ? null : pending.replacesId);
         if (pending == null || pending.entry == null || pending.entry.userId != userId ||
             String.IsNullOrWhiteSpace(pending.entry.id) ||
-            !System.Text.RegularExpressions.Regex.IsMatch(pending.entry.month ?? "", @"^\d{4}-(0[1-9]|1[0-2])$") ||
-            pending.spentBefore < 0 || pending.earnedAtSubmission <= pending.spentBefore)
+            !Regex.IsMatch(pending.entry.month ?? "", @"^\d{4}-(0[1-9]|1[0-2])$") ||
+            pending.spentBefore < 0 || (!replacement && pending.earnedAtSubmission <= pending.spentBefore))
         {
-            CPH.LogError("Invalid pending wheel submission for " + userId + ". Manual repair needed; entry NOT consumed.");
+            CPH.LogError("Invalid pending game submission for " + userId);
             return false;
         }
 
         string key = "ci_wheel_month_" + pending.entry.month.Replace('-', '_');
         List<WheelEntry> entries;
-        try
+        try { entries = Load(key); }
+        catch (Exception ex) { CPH.LogError("Cannot recover wheel: " + ex.Message); return false; }
+        if (replacement)
         {
-            string monthlyJson = CPH.GetGlobalVar<string>(key, true);
-            entries = String.IsNullOrWhiteSpace(monthlyJson) ? new List<WheelEntry>()
-                : JsonConvert.DeserializeObject<List<WheelEntry>>(monthlyJson) ?? new List<WheelEntry>();
+            var original = entries.FirstOrDefault(x => x.id == pending.replacesId && x.userId == userId);
+            if (original == null || original.status != "rejected" ||
+                (!String.IsNullOrWhiteSpace(original.replacedBy) && original.replacedBy != pending.entry.id) ||
+                (String.IsNullOrWhiteSpace(original.slotId) ? original.id : original.slotId) != pending.entry.slotId)
+            {
+                CPH.LogError("Rejected game slot no longer available for replacement: " + pending.replacesId);
+                return false;
+            }
+            original.replacedBy = pending.entry.id;
         }
-        catch (Exception ex) { CPH.LogError("Cannot read monthly wheel ledger " + key + ": " + ex.Message); return false; }
-
-        // Idempotent replay: do not add an already-saved transaction a second time.
-        if (!entries.Any(x => x != null && x.id == pending.entry.id))
-        {
+        if (!entries.Any(x => x.id == pending.entry.id))
             entries.Add(pending.entry);
-            CPH.SetGlobalVar(key, JsonConvert.SerializeObject(entries), true);
+        // Persist both the replacement pointer and new entry together.
+        CPH.SetGlobalVar(key, JsonConvert.SerializeObject(entries), true);
+        if (!replacement)
+        {
+            int spent = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_claimed", true));
+            int earned = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_earned", true));
+            CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", Math.Max(earned, pending.earnedAtSubmission), true);
+            CPH.SetTwitchUserVarById(userId, "ci_wheel_claimed", Math.Max(spent, pending.spentBefore + 1), true);
         }
-
-        int spent = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_claimed", true));
-        int earned = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_earned", true));
-        CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", Math.Max(earned, pending.earnedAtSubmission), true);
-        CPH.SetTwitchUserVarById(userId, "ci_wheel_claimed", Math.Max(spent, pending.spentBefore + 1), true);
-        AppendAudit(pending.entry);
+        AppendAudit(pending.entry, replacement ? "GAME_REPLACEMENT" : "GAME_SUBMISSION");
         CPH.UnsetTwitchUserVarById(userId, "ci_wheel_pending_json", true);
         return true;
     }
 
-
-    private void AppendAudit(WheelEntry entry)
+    private void AppendAudit(WheelEntry entry, string eventType)
     {
         try
         {
-            string key = "ci_events_month_" + DateTimeOffset.UtcNow.ToString("yyyy_MM");
+            // Recorded by submission date, not recovery date.
+            string key = "ci_events_month_" + entry.month.Replace('-', '_');
             string raw = CPH.GetGlobalVar<string>(key, true);
             var events = String.IsNullOrWhiteSpace(raw) ? new JArray() : JArray.Parse(raw);
             string id = "game-" + entry.id;
             if (events.OfType<JObject>().Any(x => (string)x["id"] == id)) return;
             events.Add(JObject.FromObject(new {
-                id,type="GAME_SUBMISSION",atUtc=DateTimeOffset.UtcNow.ToString("o"),
-                userId=entry.userId,userName=entry.user,entryId=entry.id,
-                game=entry.game,month=entry.month
+                id, type = eventType, atUtc = DateTimeOffset.UtcNow.ToString("o"),
+                userId = entry.userId, userName = entry.user, entryId = entry.id,
+                game = entry.game, month = entry.month, slotId = entry.slotId
             }));
-            CPH.SetGlobalVar(key,events.ToString(Formatting.None),true);
+            CPH.SetGlobalVar(key, events.ToString(Formatting.None), true);
         }
-        catch(Exception ex) { CPH.LogError("WHEEL AUDIT FAILED: " + ex.Message); }
+        catch (Exception ex) { CPH.LogError("WHEEL AUDIT FAILED: " + ex.Message); }
     }
 
     private static DateTimeOffset EasternTime(DateTimeOffset utc)
