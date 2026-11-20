@@ -34,7 +34,7 @@ USER_INTS = {
     "ci_wheel_earned", "ci_reward_last_stream"
 }
 USER_STRINGS = {"ci_badge", "ci_last_redemption_id", "ci_wheel_pending_json"}
-GLOBAL_INTS = {"ci_stream_id", "ci_stream_count"}
+GLOBAL_INTS = {"ci_stream_id", "ci_stream_count", "ci_schema_version"}
 GLOBAL_LONGS = {"ci_last_checkin_at_ms"}
 GLOBAL_BOOLS = {"ci_wheel_legacy_migrated"}
 MONTH_KEY = re.compile(r"ci_wheel_month_(\d{4})_(0[1-9]|1[0-2])$")
