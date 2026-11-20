@@ -16,6 +16,9 @@ public class CPHInline
         public string month { get; set; }
         public string utc { get; set; }
         public bool removed { get; set; }
+        public string status { get; set; }
+        public string slotId { get; set; }
+        public string replacedBy { get; set; }
     }
 
     public bool Execute()
@@ -69,14 +72,25 @@ public class CPHInline
             CPH.SendMessage("Wheel data needs a mod to take a look.");
             return false;
         }
-        int monthlyUsed = entries.Count(e => e.userId == id); // Include removed entries.
+        int monthlyUsed = entries.Where(e => e.userId == id)
+            .Select(e => String.IsNullOrWhiteSpace(e.slotId) ? e.id : e.slotId)
+            .Distinct(StringComparer.Ordinal).Count(); // Replacements share a slot.
         int monthlyRemaining = Math.Max(0, MonthlyLimit - monthlyUsed);
         if (sub == "" || sub == "credits")
         {
-            CPH.SendMessage($"🎮 @{name}: {earned-used} credits saved, {monthlyRemaining}/{MonthlyLimit} game picks left this month. Use !addgame Title.");
+            int pendingCount = entries.Count(e => e.userId == id && e.status == "pending");
+            int rejectedCount = entries.Count(e => e.userId == id && e.status == "rejected" && !e.removed &&
+                String.IsNullOrWhiteSpace(e.replacedBy));
+            if (rejectedCount > 0)
+                CPH.SendMessage($"🎮 @{name}: {earned-used} credits saved. {monthlyUsed}/{MonthlyLimit} picks used this month, {rejectedCount} need replacing. Use !addgame Title.");
+            else
+                CPH.SendMessage($"🎮 @{name}: {earned-used} credits saved. {monthlyUsed}/{MonthlyLimit} games submitted this month" +
+                    (pendingCount > 0 ? $" ({pendingCount} awaiting approval)." : ".") +
+                    (monthlyRemaining > 0 && earned > used ? " Use !addgame Title." : ""));
             return true;
         }
-        entries = entries.Where(e => !e.removed).ToList();
+        entries = entries.Where(e => !e.removed &&
+            (String.IsNullOrWhiteSpace(e.status) || e.status == "approved")).ToList();
         if (entries.Count == 0)
         {
             CPH.SendMessage("🎮 No games submitted to this month's wheel yet.");
