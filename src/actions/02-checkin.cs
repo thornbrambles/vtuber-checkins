@@ -98,7 +98,7 @@ public class CPHInline
             }
         }
 
-        CPH.SendMessage($"🌿 @{userName} checked in! Total: {total} | Streak: {streak} | Here today: {count}");
+        CPH.SendMessage($"🌿 @{userName} checked in! {total} total, a {streak}-stream streak, and {count} checked in this stream.");
 
         if (unlocked != "")
             CPH.SendMessage($"🏆 @{userName} got the {unlocked} badge!");
