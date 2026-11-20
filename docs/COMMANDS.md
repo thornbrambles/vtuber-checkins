@@ -35,7 +35,7 @@ If cancellation fails, the viewer is asked to contact a moderator instead of bei
 | `!wheel` | Everyone | `07-wheel-commands.cs` | Earned/used/available game submission credits |
 | `!wheel credits` | Everyone | `07-wheel-commands.cs` | Same as `!wheel` |
 | `!wheel list` | Everyone | `07-wheel-commands.cs` | Up to five current-month game entries with game, user, date and total entry count |
-| `!addgame Stardew Valley` | Everyone | `06-game-submit.cs` | Spend one available credit; save the game, username, Twitch user ID, date, month and entry ID in the current month's persisted ledger |
+| `!addgame Stardew Valley` | Everyone | `06-game-submit.cs` | Submit a game using one earned credit, up to **3 submissions per viewer each calendar month** |
 | `!addgame` (no title) | Everyone | `06-game-submit.cs` | Recover an interrupted previous submission, if any; otherwise display usage |
 
 ## Moderator and broadcaster commands
@@ -81,6 +81,8 @@ The source files implement the behavior, but they **do not provision the UI comm
 - Each Twitch user: `ci_total`, `ci_streak`, `ci_last_stream`, `ci_badge`, `ci_wheel_earned`, `ci_wheel_claimed` (persisted user variables)
 - Monthly entries: `ci_wheel_month_YYYY_MM` (persisted JSON array per month)
 - Legacy wheel archive: `ci_wheel_entries_json` (read-only after migration)
+
+Each viewer can use at most **3 game picks per Eastern Time calendar month**. Unused earned credits carry over, and the monthly allowance resets with the new month. Removing a submitted game does **not** reopen that month's slot or refund its credit. `!wheel` displays credits saved and monthly picks remaining.
 
 Available credits = `max(0, ci_wheel_earned - ci_wheel_claimed)`. Pending submissions are saved per user as `ci_wheel_pending_json` for crash recovery. Run the one-time migration action before the new wheel commands are enabled. `ci_wheel_earned` is the highest number of ten-check-in entitlements ever earned and never decreases. Historical redemptions never become available again after an admin reset.
 
