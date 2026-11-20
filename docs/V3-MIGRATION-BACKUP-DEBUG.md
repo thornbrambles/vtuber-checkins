@@ -51,7 +51,7 @@ The importer validates the JSON structure, supported field types, user IDs, and 
 2. Confirm the `Community Checkins` queue is **Blocking**.
 3. Create **CI - Migrate Legacy Wheel** with `08-migrate-legacy-wheel.cs` (manual-only, no triggers).
 4. Temporarily disable any `!game` command if your setup already has one.
-5. Manually run the migration action. In v3 there may be **no wheel entries**; that is normal. The action sets `ci_wheel_legacy_migrated=true` and leaves user totals and streaks unchanged.
+5. Manually run the migration action. In v3 there may be **no wheel entries**; that is normal. The action initializes `ci_wheel_earned` from each viewer's lifetime total (plus existing spent/earned history), sets `ci_wheel_legacy_migrated=true` and `ci_schema_version=5`, and leaves user totals and streaks unchanged.
 6. Inspect the log. Only then replace the runtime actions with the PR version; compile them individually.
 7. If upgrading directly from v3, create the `!game` and `!wheel` commands; these are not part of the original v3 Channel Points workflow.
 8. Run the manual export again to confirm the migrated state, then test the commands offline.
