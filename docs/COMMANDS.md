@@ -14,20 +14,17 @@ This document describes the commands present **in the repository**. These are no
 
 ## Channel Points redemption messages
 
-The **🌿 Stream Check-in** redemption is separate from chat commands. Its viewer-facing messages make the outcome explicit:
+The **🌿 Stream Check-in** Channel Points redemption is separate from chat commands. Chat output stays short:
 
-| Event | Example chat response |
+| Event | Example |
 | --- | --- |
-| First check-in | `✅ 🌿 @viewer — Welcome to the Grove! Check-in #1 • a new streak started • 1 viewer(s) checked in this stream. Your next step: !checkins for your progress.` |
-| Repeat attendance, new stream | `✅ 🌿 @viewer — You're checked in! Check-in #12 • 4-stream streak • 8 viewer(s) checked in this stream. Your next step: !checkins for your progress.` |
-| Badge milestone | `🏆 Milestone unlocked! @viewer earned the Sapling badge for 10 total check-ins!` |
-| New game credit | `🎮 Game wheel credit earned! @viewer now has 1 available. Submit a game with !game Game Title.` |
-| Duplicate redemption | Says **no extra check-in recorded** and reports whether cancellation succeeded |
-| Before stream initialization | Says **check-in NOT recorded** and reports whether cancellation succeeded |
+| Successful check-in | `🌿 @viewer checked in! Total: 12 \| Streak: 4 \| Here today: 8` |
+| Badge earned | `🏆 @viewer got the Sapling badge!` |
+| Wheel credit earned | `🎮 @viewer earned a game pick! 1 left. Use !game <title>.` |
+| Duplicate redemption | `@viewer, you're already checked in! Your points were refunded.` |
+| Stream not initialized | `@viewer, check-ins aren't open yet. Your points were refunded.` |
 
-If Twitch fulfillment fails after the check-in has already been recorded, the action logs a warning for the moderator instead of encouraging another redemption. Replayed redemption events do not announce a second successful check-in.
-
-**Refund distinction:** A successful Streamer.bot cancellation call means the cancellation request succeeded. The action cannot independently prove when Twitch returns the points to the viewer's balance.
+If cancellation fails, the viewer is asked to contact a moderator instead of being told a refund succeeded. A replayed redemption event does not post another check-in message.
 
 ## Viewer chat commands
 
