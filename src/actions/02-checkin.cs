@@ -40,6 +40,24 @@ public class CPHInline
             return false;
         }
 
+        // Recover the global journal first, even when this event belongs to another viewer.
+        // Other accounting writers refuse to run while it exists.
+        try
+        {
+            string pending = CPH.GetGlobalVar<string>("ci_checkin_pending_json", true);
+            if (!String.IsNullOrWhiteSpace(pending)) CompleteCheckin(JObject.Parse(pending));
+            if (WasProcessed(userId, redemptionId))
+            {
+                Fulfill(rewardId, redemptionId);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("Check-in recovery/receipt validation failed: " + ex.Message);
+            return false;
+        }
+
         int streamId = CPH.GetGlobalVar<int>("ci_stream_id", true);
         if (streamId <= 0)
         {
@@ -54,15 +72,6 @@ public class CPHInline
         int lastRewardStream = CPH.GetTwitchUserVarById<int>(userId, "ci_reward_last_stream", true);
         if (previous == streamId || lastRewardStream == streamId)
         {
-            string lastRedemptionId = CPH.GetTwitchUserVarById<string>(userId, "ci_last_redemption_id", true);
-            if (lastRedemptionId == redemptionId)
-            {
-                // The same redemption may be replayed if fulfillment previously failed.
-                // Do NOT refund an already-recorded successful check-in.
-                if (!CPH.TwitchRedemptionFulfill(rewardId, redemptionId))
-                    CPH.LogWarn("Previously recorded redemption " + redemptionId + " could not be fulfilled. Inspect the queue.");
-                return true;
-            }
             bool refunded = CancelRedemption("duplicate check-in");
             CPH.SendMessage(refunded
                 ? $"@{userName}, you're already checked in! Your points were refunded."
@@ -75,17 +84,9 @@ public class CPHInline
         int streak = previous == streamId - 1 ? oldStreak + 1 : 1;
         int count = CPH.GetGlobalVar<int>("ci_stream_count", true) + 1;
 
-        CPH.SetTwitchUserVarById(userId, "ci_last_stream", streamId, true);
-        // Immutable once-per-stream redemption marker; admin attendance resets do not clear it.
-        CPH.SetTwitchUserVarById(userId, "ci_reward_last_stream", streamId, true);
-        CPH.SetTwitchUserVarById(userId, "ci_last_redemption_id", redemptionId, true);
-        CPH.SetTwitchUserVarById(userId, "ci_total", total, true);
-        CPH.SetTwitchUserVarById(userId, "ci_streak", streak, true);
         int usedCredits = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_claimed", true));
         int previousEarnedCredits = Math.Max(usedCredits, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_earned", true));
         int earnedCredits = Math.Max(previousEarnedCredits, total / 10);
-        CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", earnedCredits, true);
-        CPH.SetGlobalVar("ci_stream_count", count, true);
 
         string unlocked = "";
         for (int i = 0; i < Thresholds.Length; i++)
@@ -93,10 +94,18 @@ public class CPHInline
             if (total == Thresholds[i])
             {
                 unlocked = Badges[i];
-                CPH.SetTwitchUserVarById(userId, "ci_badge", unlocked, true);
                 break;
             }
         }
+
+        var transaction = JObject.FromObject(new {
+            userId, userName, rewardId, redemptionId, streamId, total, streak, count,
+            earnedCredits, unlocked, atMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            month = DateTimeOffset.UtcNow.ToString("yyyy_MM")
+        });
+        // No attendance writes occur before this durable journal.
+        CPH.SetGlobalVar("ci_checkin_pending_json", transaction.ToString(Formatting.None), true);
+        CompleteCheckin(transaction);
 
         CPH.SendMessage($"🌿 @{userName} checked in! {total} total check-ins, a {streak}-stream streak, and {count} people checked in this stream.");
 
@@ -109,24 +118,96 @@ public class CPHInline
             CPH.SendMessage($"🎮 @{userName} earned a game pick! {availableCredits} left. Use !addgame <title>.");
         }
 
-        AppendAudit(new {
-            id="checkin-"+redemptionId, type="CHECKIN", atUtc=DateTimeOffset.UtcNow.ToString("o"),
-            userId, userName, streamId, totalAfter=total, streakAfter=streak,
-            creditEarned=earnedCredits
-        }, "checkin-"+redemptionId);
-        CPH.SetGlobalVar("ci_last_checkin_at_ms", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), true);
-        Publish(streamId, count, userName, unlocked, total, streak);
-        if (!CPH.TwitchRedemptionFulfill(rewardId, redemptionId))
-            CPH.LogWarn("Check-in recorded, but Twitch could not automatically fulfill redemption " + redemptionId +
-                        ". Check the Twitch reward queue manually; do NOT redeem again to fix it.");
         return true;
+    }
+
+    private bool WasProcessed(string userId, string redemptionId)
+    {
+        // Backward compatibility for receipts created before this journal existed.
+        if (CPH.GetTwitchUserVarById<string>(userId, "ci_last_redemption_id", true) == redemptionId)
+            return true;
+        foreach (var variable in CPH.GetGlobalVarValues(true))
+        {
+            string key = variable.VariableName ?? "";
+            string raw;
+            if (key.StartsWith("ci_checkin_receipts_month_", StringComparison.Ordinal))
+            {
+                raw = CPH.GetGlobalVar<string>(key, true);
+                if (String.IsNullOrWhiteSpace(raw)) continue;
+                var receipt = JObject.Parse(raw)[redemptionId];
+                if (receipt != null)
+                {
+                    if ((string)receipt != userId) throw new InvalidOperationException("Redemption owner mismatch");
+                    return true;
+                }
+            }
+            else if (key.StartsWith("ci_events_month_", StringComparison.Ordinal))
+            {
+                raw = CPH.GetGlobalVar<string>(key, true);
+                if (!String.IsNullOrWhiteSpace(raw) && JArray.Parse(raw).OfType<JObject>().Any(e =>
+                    (string)e["id"] == "checkin-" + redemptionId && (string)e["userId"] == userId))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private void CompleteCheckin(JObject transaction)
+    {
+        string userId = (string)transaction["userId"];
+        string redemptionId = (string)transaction["redemptionId"];
+        string rewardId = (string)transaction["rewardId"];
+        string month = (string)transaction["month"];
+        if (String.IsNullOrWhiteSpace(userId) || String.IsNullOrWhiteSpace(redemptionId) ||
+            String.IsNullOrWhiteSpace(rewardId) || !System.Text.RegularExpressions.Regex.IsMatch(month ?? "", @"^\d{4}_(0[1-9]|1[0-2])$"))
+            throw new InvalidOperationException("Invalid pending check-in identity");
+        int streamId = transaction["streamId"].Value<int>();
+        int total = transaction["total"].Value<int>();
+        int streak = transaction["streak"].Value<int>();
+        int count = transaction["count"].Value<int>();
+        int earned = transaction["earnedCredits"].Value<int>();
+        long atMs = transaction["atMs"].Value<long>();
+        if (streamId <= 0 || total <= 0 || streak <= 0 || count <= 0 || earned < 0 || atMs <= 0 ||
+            streamId != CPH.GetGlobalVar<int>("ci_stream_id", true))
+            throw new InvalidOperationException("Invalid pending check-in counters/stream");
+        string receiptKey = "ci_checkin_receipts_month_" + month;
+        string raw = CPH.GetGlobalVar<string>(receiptKey, true);
+        var receipts = String.IsNullOrWhiteSpace(raw) ? new JObject() : JObject.Parse(raw);
+        if (receipts[redemptionId] != null && (string)receipts[redemptionId] != userId)
+            throw new InvalidOperationException("Redemption owner mismatch");
+        CPH.SetTwitchUserVarById(userId, "ci_last_stream", streamId, true);
+        CPH.SetTwitchUserVarById(userId, "ci_reward_last_stream", streamId, true);
+        CPH.SetTwitchUserVarById(userId, "ci_last_redemption_id", redemptionId, true);
+        CPH.SetTwitchUserVarById(userId, "ci_total", total, true);
+        CPH.SetTwitchUserVarById(userId, "ci_streak", streak, true);
+        CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", earned, true);
+        CPH.SetGlobalVar("ci_stream_count", count, true);
+        string unlocked = (string)transaction["unlocked"];
+        if (!String.IsNullOrWhiteSpace(unlocked)) CPH.SetTwitchUserVarById(userId, "ci_badge", unlocked, true);
+        AppendAudit(new {
+            id = "checkin-" + redemptionId, type = "CHECKIN",
+            atUtc = DateTimeOffset.FromUnixTimeMilliseconds(atMs).ToString("o"),
+            userId, userName = (string)transaction["userName"], streamId,
+            totalAfter = total, streakAfter = streak, creditEarned = earned
+        }, "checkin-" + redemptionId, month);
+        CPH.SetGlobalVar("ci_last_checkin_at_ms", atMs, true);
+        receipts[redemptionId] = userId;
+        CPH.SetGlobalVar(receiptKey, receipts.ToString(Formatting.None), true);
+        CPH.UnsetGlobalVar("ci_checkin_pending_json", true);
+        Publish(streamId, count, (string)transaction["userName"], unlocked, total, streak);
+        Fulfill(rewardId, redemptionId);
+    }
+
+    private void Fulfill(string rewardId, string redemptionId)
+    {
+        if (!CPH.TwitchRedemptionFulfill(rewardId, redemptionId))
+            CPH.LogWarn("Check-in recorded but could not fulfill redemption " + redemptionId + ". Inspect the Twitch queue.");
     }
 
     // Audit is derived history, not an atomic database transaction. Counters
     // remain the primary state; reconciliation detects missing events.
-    private void AppendAudit(object record, string eventId)
+    private void AppendAudit(object record, string eventId, string month)
     {
-        string month = DateTimeOffset.UtcNow.ToString("yyyy_MM");
         string key = "ci_events_month_" + month;
         try
         {

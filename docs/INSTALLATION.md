@@ -1,5 +1,16 @@
 # Installation — VTuber Check-ins v5
 
+**Updating an existing v5 install:** Disable incoming check-in/game/admin triggers,
+export a fresh backup, and replace actions 01, 02, 05, 06, 08, 10, 11 and 12 together
+in the shared Blocking queue. The check-in action now saves
+`ci_checkin_pending_json` before counter updates and retains completed redemption
+IDs in `ci_checkin_receipts_month_YYYY_MM`. Do not delete these globals during
+cleanup. Replace action 13 for duplicate-safe rename/restore and action 17 for the
+.NET Framework-compatible wheel draw. Compile each updated action in Streamer.bot.
+Run diagnostics and the [acceptance checklist](STREAMERBOT-ACCEPTANCE.md) before
+enabling triggers. If a pending check-in is reported, follow the
+[recovery instructions](OPERATIONS.md#check-in-recovery-and-retry-receipts) first.
+
 **Upgrading from deployed v3?** Begin with [V3-MIGRATION-BACKUP-DEBUG.md](V3-MIGRATION-BACKUP-DEBUG.md). You can migrate directly from v3; export existing state before changing actions.
 
 **Upgrading from v4?** Read [REFRACTOR.md](REFRACTOR.md) and run the one-time wheel migration **before installing the new v5 wheel scripts**. The original all-month wheel JSON must be migrated or old entries will not appear in monthly lists.

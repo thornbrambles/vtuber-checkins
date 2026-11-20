@@ -27,7 +27,7 @@ jobs:
         run: node --test tests/test-wheel-overlay.mjs
 
   csharp-compile:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -38,3 +38,5 @@ jobs:
           python-version: '3.12'
       - name: Compile each C# action against documented API-shaped stubs
         run: python tools/compile-actions.py
+      - name: Exercise actual C# actions with interrupted writes and event retries
+        run: python tools/test-actions.py

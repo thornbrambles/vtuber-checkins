@@ -34,6 +34,11 @@ public class CPHInline
 
     public bool Execute()
     {
+        if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_checkin_pending_json", true)))
+        {
+            CPH.LogError("Pending check-in must be recovered by CI - Viewer Check-in before changing accounting state.");
+            return false;
+        }
         string path = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "vtuber-checkins-backups", ImportFilename);

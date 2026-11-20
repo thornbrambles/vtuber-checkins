@@ -16,7 +16,7 @@ import json
 import pathlib
 import secrets
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -61,6 +61,8 @@ def append_audit(data, record):
 
 
 def edit_user(data, user_id, total, streak):
+    if data["globals"].get("ci_checkin_pending_json"):
+        raise ops.CheckinError("Recover the pending check-in in Streamer.bot and export again before editing counts")
     staged = copy.deepcopy(data)
     matches = [u for u in staged["users"] if u["userId"] == user_id]
     if len(matches) != 1:
@@ -72,6 +74,20 @@ def edit_user(data, user_id, total, streak):
     old_streak = user["vars"].get("ci_streak", 0)
     user["vars"]["ci_total"] = total
     user["vars"]["ci_streak"] = streak if total else 0
+    if total == 0:
+        last = user["vars"].get("ci_last_stream", 0)
+        stream = staged["globals"].get("ci_stream_id", 0)
+        if stream > 0 and last == stream:
+            staged["globals"]["ci_stream_count"] = max(0, staged["globals"].get("ci_stream_count", 0) - 1)
+        # Import skips absent/null fields, so explicitly clear existing attendance.
+        user["vars"]["ci_last_stream"] = 0
+    milestones = json.loads((ROOT / "config/checkins.json").read_text(encoding="utf-8"))["milestones"]
+    badges = [m["badge"] for m in milestones if total >= m["count"]]
+    if badges:
+        user["vars"]["ci_badge"] = badges[-1]
+    else:
+        # Import skips null/missing fields. An empty badge clears existing text on overwrite.
+        user["vars"]["ci_badge"] = ""
     spent = user["vars"].get("ci_wheel_claimed", 0)
     user["vars"]["ci_wheel_earned"] = max(
         user["vars"].get("ci_wheel_earned", 0), spent, total // 10)
@@ -286,7 +302,7 @@ def serve(snapshot, output_dir, port):
         def log_message(self, fmt, *args):
             return  # Do not log local auth tokens or viewer data into console.
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = HTTPServer(("127.0.0.1", port), Handler)
     print(f"Local-only admin dashboard: http://127.0.0.1:{port}/?token={token}", flush=True)
     print("Snapshot edits are staged. Press Ctrl+C to stop; no live Streamer.bot connection.")
     try:

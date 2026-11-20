@@ -6,6 +6,42 @@ not have access to the Streamer.bot process; they operate on exported JSON files
 
 ## Production storage map (schema 5)
 
+### Check-in recovery and retry receipts
+
+`ci_checkin_pending_json` is a single durable check-in journal. The check-in action
+saves the intended attendance, streak, stream count, credit high-water and badge
+before writing counters. On the next valid check-in event it finishes that journal
+before evaluating the incoming redemption. Keep every accounting writer in the
+same Blocking queue and replace actions 01, 02, 05, 06, 08, 10, 11 and 12 together.
+Those writers refuse changes while a check-in is pending; diagnostics reports it.
+After an interruption, re-run the original reward action with its original Twitch
+arguments before starting another stream or changing counts. Do not delete the
+journal to bypass the guard. Back up and inspect malformed journals manually.
+
+`ci_checkin_receipts_month_YYYY_MM` maps completed redemption IDs to viewer IDs.
+Keep these receipts with backups even across month/stream boundaries. Export and
+import already include these string globals. Existing last-redemption markers and
+retained check-in audit events are also recognized for older records; redemptions
+whose historical IDs were never retained cannot be reconstructed automatically.
+Successful counter recovery may omit the original celebration message; Twitch
+fulfillment can be retried without awarding attendance again. This handles ordered
+write failures in the shared queue, not corrupted storage or out-of-order disk flushes.
+
+The offline dashboard serializes requests so overlapping tabs cannot replace each
+other's edits. Zero totals explicitly export attendance `0` and an empty badge:
+the import action skips absent/null fields, so these values are necessary to clear
+existing records. Earned/spent credits and the independent redemption marker remain
+intact. Continue to import only while Twitch submissions are disabled.
+
+### Offline runtime regression checks
+
+The compile harness targets .NET Framework 4.8.1. On Windows with a .NET SDK,
+run `python tools/compile-actions.py` and `python tools/test-actions.py`.
+The latter executes actual action bodies with test doubles, including interrupted
+writes, cross-stream retries and duplicate-title moderation. CI runs both on
+Windows. Real Streamer.bot assembly compilation and Twitch/OBS acceptance tests
+are still required before installation.
+
 ### Twitch user variables (persisted)
 
 - ci_total — lifetime check-in count

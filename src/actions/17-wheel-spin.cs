@@ -189,7 +189,7 @@ public class CPHInline
 
         // Cryptographically secure uniform draw. One *submission* = one slice,
         // even if a viewer owns multiple entries. Persist BEFORE presentation.
-        int winningIndex = RandomNumberGenerator.GetInt32(choices.Count);
+        int winningIndex = DrawIndex(choices.Count);
         var saved = new Result {
             spinId=Guid.NewGuid().ToString("N"), month=month,
             drawnAtUtc=now.ToString("o"), eligibleCount=choices.Count,
@@ -239,6 +239,22 @@ public class CPHInline
             operation, actorId, month, spinId, game
         }));
         CPH.SetGlobalVar("ci_wheel_spin_audit_json", audit.ToString(Formatting.None), true);
+    }
+
+    private static int DrawIndex(int count)
+    {
+        if (count <= 0) throw new ArgumentOutOfRangeException("count");
+        // Reject the incomplete tail so every slice has exactly the same probability.
+        ulong range = (ulong)UInt32.MaxValue + 1;
+        ulong limit = range - range % (uint)count;
+        var bytes = new byte[4];
+        using (var rng = RandomNumberGenerator.Create())
+        {
+            uint value;
+            do { rng.GetBytes(bytes); value = BitConverter.ToUInt32(bytes, 0); }
+            while ((ulong)value >= limit);
+            return (int)(value % (uint)count);
+        }
     }
 
     private static string ResultKey(string month) { return "ci_wheel_spin_result_" + month.Replace('-', '_'); }

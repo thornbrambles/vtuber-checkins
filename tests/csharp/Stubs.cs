@@ -3,6 +3,7 @@
 // compatibility. Validate with actual Streamer.bot before production deployment.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 public class GlobalVariableValue {
     public string VariableName { get; set; }
@@ -29,27 +30,58 @@ public class CommandData {
     public List<string> Commands { get; set; }
 }
 public static class CPH {
-    public static T GetGlobalVar<T>(string key, bool persisted=true) { return default(T); }
-    public static void SetGlobalVar(string key, object value, bool persisted=true) {}
-    public static void UnsetGlobalVar(string key, bool persisted=true) {}
-    public static List<GlobalVariableValue> GetGlobalVarValues(bool persisted=true) { return new List<GlobalVariableValue>(); }
+    public static Dictionary<string, object> Globals = new Dictionary<string, object>();
+    public static Dictionary<string, Dictionary<string, object>> Users = new Dictionary<string, Dictionary<string, object>>();
+    public static Dictionary<string, object> Args = new Dictionary<string, object>();
+    public static List<string> Fulfilled = new List<string>();
+    public static List<string> Canceled = new List<string>();
+    public static List<string> Messages = new List<string>();
+    public static int FailAfterWrite = -1, Writes = 0;
+    public static bool FulfillmentSucceeds = true;
+    public static void Reset() {
+        Globals.Clear(); Users.Clear(); Args.Clear(); Fulfilled.Clear(); Canceled.Clear(); Messages.Clear();
+        FailAfterWrite = -1; Writes = 0; FulfillmentSucceeds = true;
+    }
+    private static void BeforeWrite() {
+        if (Writes++ == FailAfterWrite) throw new InvalidOperationException("Injected write failure");
+    }
+    public static T GetGlobalVar<T>(string key, bool persisted=true) { return Globals.ContainsKey(key) ? (T)Globals[key] : default(T); }
+    public static void SetGlobalVar(string key, object value, bool persisted=true) { BeforeWrite(); Globals[key] = value; }
+    public static void UnsetGlobalVar(string key, bool persisted=true) { BeforeWrite(); Globals.Remove(key); }
+    public static List<GlobalVariableValue> GetGlobalVarValues(bool persisted=true) {
+        return Globals.Select(x => new GlobalVariableValue {VariableName=x.Key, Value=x.Value}).ToList();
+    }
 
-    public static T GetTwitchUserVarById<T>(string userId, string name, bool persisted=true) { return default(T); }
-    public static List<UserVariableValue<T>> GetTwitchUsersVar<T>(string name, bool persisted=true) { return new List<UserVariableValue<T>>(); }
-    public static void SetTwitchUserVarById(string userId, string name, object value, bool persisted=true) {}
-    public static void UnsetTwitchUserVarById(string userId, string name, bool persisted=true) {}
+    public static T GetTwitchUserVarById<T>(string userId, string name, bool persisted=true) {
+        return Users.ContainsKey(userId) && Users[userId].ContainsKey(name) ? (T)Users[userId][name] : default(T);
+    }
+    public static List<UserVariableValue<T>> GetTwitchUsersVar<T>(string name, bool persisted=true) {
+        return Users.Where(u => u.Value.ContainsKey(name)).Select(u => new UserVariableValue<T> {
+            UserId=u.Key, UserName=u.Key, UserLogin=u.Key, Value=(T)u.Value[name]
+        }).ToList();
+    }
+    public static void SetTwitchUserVarById(string userId, string name, object value, bool persisted=true) {
+        BeforeWrite();
+        if (!Users.ContainsKey(userId)) Users[userId] = new Dictionary<string, object>();
+        Users[userId][name] = value;
+    }
+    public static void UnsetTwitchUserVarById(string userId, string name, bool persisted=true) {
+        BeforeWrite(); if (Users.ContainsKey(userId)) Users[userId].Remove(name);
+    }
 
-    public static bool TryGetArg<T>(string name, out T value) { value=default(T); return false; }
-    public static TwitchUserInfo TwitchGetUserInfoById(string id) { return null; }
+    public static bool TryGetArg<T>(string name, out T value) {
+        value=Args.ContainsKey(name) ? (T)Args[name] : default(T); return Args.ContainsKey(name);
+    }
+    public static TwitchUserInfo TwitchGetUserInfoById(string id) { return new TwitchUserInfo {UserId=id, UserName=id, IsModerator=id=="mod"}; }
     public static TwitchUserInfo TwitchGetUserInfoByLogin(string name) { return null; }
-    public static TwitchUserInfo TwitchGetBroadcaster() { return null; }
+    public static TwitchUserInfo TwitchGetBroadcaster() { return new TwitchUserInfo {UserId="broadcaster"}; }
 
-    public static void SendMessage(string message) {}
+    public static void SendMessage(string message) { Messages.Add(message); }
     public static void LogInfo(string message) {}
     public static void LogWarn(string message) {}
     public static void LogError(string message) {}
-    public static bool TwitchRedemptionFulfill(string rewardId, string redemptionId) { return true; }
-    public static bool TwitchRedemptionCancel(string rewardId, string redemptionId) { return true; }
+    public static bool TwitchRedemptionFulfill(string rewardId, string redemptionId) { Fulfilled.Add(redemptionId); return FulfillmentSucceeds; }
+    public static bool TwitchRedemptionCancel(string rewardId, string redemptionId) { Canceled.Add(redemptionId); return true; }
     public static bool RunAction(string name, bool runImmediately=true) { return true; }
     public static List<CommandData> GetCommands() { return new List<CommandData>(); }
 }

@@ -27,6 +27,8 @@ public class CPHInline
         var claimed = CPH.GetTwitchUsersVar<int>("ci_wheel_claimed", true);
         var earned = CPH.GetTwitchUsersVar<int>("ci_wheel_earned", true);
         var pending = CPH.GetTwitchUsersVar<string>("ci_wheel_pending_json", true);
+        if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_checkin_pending_json", true)))
+            Add(findings,"error","PENDING_CHECKIN","Recover the pending check-in before changing streams or accounting state.");
 
         if (streamId < 0 || streamCount < 0)
             Add(findings,"error","STREAM_NEGATIVE","Stream number/count cannot be negative.");
