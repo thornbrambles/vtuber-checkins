@@ -4,7 +4,11 @@
     "points": 1,
     "name": "🌿 Stream Check-in",
     "creditsEvery": 10,
-    "maxSubmissionsPerViewerPerMonth": 3
+    "maxSubmissionsPerViewerPerMonth": 3,
+    "approvalRequired": true,
+    "rejectedGameReplacementCost": 0,
+    "rejectReleasesMonthlySlot": false,
+    "duplicateTitlePolicy": "case-insensitive-whitespace-normalized"
   },
   "milestones": [
     {
