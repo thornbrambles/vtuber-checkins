@@ -14,6 +14,7 @@ public class CPHInline
         public string date { get; set; }
         public string month { get; set; }
         public string utc { get; set; }
+        public bool removed { get; set; }
     }
 
     public bool Execute()
@@ -66,6 +67,7 @@ public class CPHInline
             CPH.SendMessage("Wheel data is unavailable. Contact a moderator.");
             return false;
         }
+        entries = entries.Where(e => e != null && !e.removed).ToList();
         if (entries.Count == 0)
         {
             CPH.SendMessage("🎮 No games submitted to this month's wheel yet.");
