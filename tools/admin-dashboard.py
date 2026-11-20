@@ -212,7 +212,6 @@ def serve(snapshot, output_dir, port):
             self.respond(200, page(data, token, "No changes are applied to the live bot."))
 
         def do_POST(self):
-            global data
             origin = self.headers.get("Origin", "")
             if origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
                 self.respond(403, "Invalid origin", "text/plain")
