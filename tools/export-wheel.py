@@ -20,6 +20,6 @@ with output.open("w", encoding="utf-8-sig", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=["game", "user", "date"])
     writer.writeheader()
     for entry in entries:
-        if entry.get("month") == month and not entry.get("removed", False):
+        if entry.get("month") == month and not entry.get("removed", False) and entry.get("status", "approved") == "approved":
             writer.writerow({k: entry.get(k, "") for k in ("game", "user", "date")})
 print(f"Exported {output}")
