@@ -30,6 +30,7 @@ public class CPHInline
         string legacyJson = CPH.GetGlobalVar<string>("ci_wheel_entries_json", true);
         if (String.IsNullOrWhiteSpace(legacyJson))
         {
+            InitializeCreditHighwater();
             CPH.SetGlobalVar("ci_wheel_legacy_migrated", true, true);
             CPH.SetGlobalVar("ci_schema_version", 5, true);
             CPH.LogInfo("Wheel migration: no legacy entries. Monthly storage ready.");
@@ -98,9 +99,35 @@ public class CPHInline
             CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", earned, true);
         }
 
+        InitializeCreditHighwater();
         CPH.SetGlobalVar("ci_wheel_legacy_migrated", true, true);
         CPH.SetGlobalVar("ci_schema_version", 5, true);
         CPH.LogInfo($"Wheel migration complete: {legacy.Count} legacy entries checked across {updates.Count} month partitions; source kept intact.");
         return true;
     }
+    // All v3 viewers need an earned-credit baseline even when the legacy
+    // wheel array is absent. Normalize saved spent/earned and current totals
+    // without reducing either high-water counter.
+    private void InitializeCreditHighwater()
+    {
+        var totals = CPH.GetTwitchUsersVar<int>("ci_total", true)
+            .ToDictionary(x => x.UserId, x => x.Value);
+        var spent = CPH.GetTwitchUsersVar<int>("ci_wheel_claimed", true)
+            .ToDictionary(x => x.UserId, x => x.Value);
+        var earned = CPH.GetTwitchUsersVar<int>("ci_wheel_earned", true)
+            .ToDictionary(x => x.UserId, x => x.Value);
+        var ids = new HashSet<string>(totals.Keys);
+        ids.UnionWith(spent.Keys);
+        ids.UnionWith(earned.Keys);
+        foreach (var id in ids)
+        {
+            int total = totals.ContainsKey(id) ? Math.Max(0, totals[id]) : 0;
+            int used = spent.ContainsKey(id) ? Math.Max(0, spent[id]) : 0;
+            int prior = earned.ContainsKey(id) ? Math.Max(0, earned[id]) : 0;
+            int high = Math.Max(Math.Max(used, prior), total / 10);
+            CPH.SetTwitchUserVarById(id, "ci_wheel_earned", high, true);
+        }
+        CPH.LogInfo("Wheel migration: initialized credit high-water baselines for " + ids.Count + " Twitch viewers.");
+    }
+
 }
