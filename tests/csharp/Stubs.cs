@@ -23,6 +23,11 @@ public class TwitchUserInfo {
     public bool IsModerator { get; set; }
 }
 
+public class CommandData {
+    public string Name { get; set; }
+    public bool Enabled { get; set; }
+    public List<string> Commands { get; set; }
+}
 public static class CPH {
     public static T GetGlobalVar<T>(string key, bool persisted=true) { return default(T); }
     public static void SetGlobalVar(string key, object value, bool persisted=true) {}
@@ -46,4 +51,5 @@ public static class CPH {
     public static bool TwitchRedemptionFulfill(string rewardId, string redemptionId) { return true; }
     public static bool TwitchRedemptionCancel(string rewardId, string redemptionId) { return true; }
     public static bool RunAction(string name, bool runImmediately=true) { return true; }
+    public static List<CommandData> GetCommands() { return new List<CommandData>(); }
 }
