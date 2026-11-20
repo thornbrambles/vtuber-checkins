@@ -20,7 +20,7 @@ A Twitch Channel Points check-in system for Streamer.bot, with persistent lifeti
 
 See [the full command catalog](docs/COMMANDS.md) for usage, permissions, examples and effects.
 
-`!checkins` shows your count and credits; `!checkinboard` shows the leaderboard; `!game Game Title` submits a wheel entry; `!wheel` checks credits and `!wheel list` shows monthly entries.
+`!checkins` shows your count and credits; `!checkinboard` shows the leaderboard; `!addgame Game Title` submits a wheel entry; `!wheel` checks credits and `!wheel list` shows monthly entries.
 
 ## Admin commands
 
