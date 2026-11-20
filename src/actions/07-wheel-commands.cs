@@ -33,7 +33,7 @@ public class CPHInline
         string pending = CPH.GetTwitchUserVarById<string>(id, "ci_wheel_pending_json", true);
         if (!String.IsNullOrWhiteSpace(pending))
         {
-            CPH.SendMessage($"@{name}, an earlier game submission is pending recovery. Run !game with no title to finish it, then check !wheel again.");
+            CPH.SendMessage($"@{name}, an earlier game submission is pending recovery. Run !addgame with no title to finish it, then check !wheel again.");
             return true;
         }
         int total = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_total", true));
@@ -42,7 +42,7 @@ public class CPHInline
 
         if (sub == "" || sub == "credits")
         {
-            CPH.SendMessage($"🎮 @{name}: {earned - used} game credits available (earned {earned}, used {used}, lifetime check-ins {total}). Submit: !game Game Title. Current wheel: !wheel list");
+            CPH.SendMessage($"🎮 @{name}: {earned - used} game credits available (earned {earned}, used {used}, lifetime check-ins {total}). Submit: !addgame Game Title. Current wheel: !wheel list");
             return true;
         }
         if (sub != "list")
