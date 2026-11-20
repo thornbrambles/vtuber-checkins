@@ -106,7 +106,7 @@ public class CPHInline
         if (earnedCredits > previousEarnedCredits)
         {
             int availableCredits = Math.Max(0, earnedCredits - usedCredits);
-            CPH.SendMessage($"🎮 @{userName} earned a game pick! {availableCredits} left. Use !game <title>.");
+            CPH.SendMessage($"🎮 @{userName} earned a game pick! {availableCredits} left. Use !addgame <title>.");
         }
 
         AppendAudit(new {
