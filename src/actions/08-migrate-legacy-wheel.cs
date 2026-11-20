@@ -22,7 +22,8 @@ public class CPHInline
     {
         if (CPH.GetGlobalVar<bool>("ci_wheel_legacy_migrated", true))
         {
-            CPH.LogInfo("Wheel migration already completed; no changes made.");
+            CPH.SetGlobalVar("ci_schema_version", 5, true);
+            CPH.LogInfo("Wheel migration already completed; schema version set to 5.");
             return true;
         }
 
@@ -30,6 +31,7 @@ public class CPHInline
         if (String.IsNullOrWhiteSpace(legacyJson))
         {
             CPH.SetGlobalVar("ci_wheel_legacy_migrated", true, true);
+            CPH.SetGlobalVar("ci_schema_version", 5, true);
             CPH.LogInfo("Wheel migration: no legacy entries. Monthly storage ready.");
             return true;
         }
@@ -97,6 +99,7 @@ public class CPHInline
         }
 
         CPH.SetGlobalVar("ci_wheel_legacy_migrated", true, true);
+        CPH.SetGlobalVar("ci_schema_version", 5, true);
         CPH.LogInfo($"Wheel migration complete: {legacy.Count} legacy entries checked across {updates.Count} month partitions; source kept intact.");
         return true;
     }
