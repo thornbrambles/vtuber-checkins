@@ -39,6 +39,10 @@ The only admin command is `!checkinadmin`, with these subcommands. Configure **S
 
 All the admin edits are logged. Manually increasing totals can unlock additional lifetime wheel entitlements when crossing a new high-water milestone; decreasing and increasing back to previous totals won't issue extra entitlements.
 
+## Wheel moderator commands
+
+`!wheeladmin` (Starts With; Moderator/broadcaster only) is implemented by `13-wheel-admin.cs`. Subcommands: `!wheeladmin list [YYYY-MM]`, `!wheeladmin rename ENTRY_ID New Title`, `!wheeladmin remove ENTRY_ID`, `!wheeladmin restore ENTRY_ID`. Removals are soft-deletes and do not refund credits. All edit operations are recorded in `ci_wheel_audit_json`.
+
 ## Access and matching settings
 
 | Command registration | Matching | Permissions |
@@ -48,6 +52,7 @@ All the admin edits are logged. Manually increasing totals can unlock additional
 | `!wheel` | Starts With | Everyone |
 | `!game` | Starts With | Everyone |
 | `!checkinadmin` | Starts With | Moderator + broadcaster |
+| `!wheeladmin` | Starts With | Moderator + broadcaster |
 
 The source files implement the behavior, but they **do not provision the UI command registrations or triggers**.
 
