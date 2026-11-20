@@ -49,6 +49,7 @@ maintenance actions should also be assigned to this queue.
 | 12-diagnostics.cs | Manual OR private local timed event | Read-only checks and JSON findings |
 | 13-wheel-admin.cs | Twitch command: !wheeladmin | Mod/broadcaster rename/remove/restore wheel entries; audit logging |
 | 14-reconcile.cs | Manual OR private local timed event | Read-only ledger-versus-credit report |
+| 15-diagnostic-command.cs | Twitch command: !checkindiag | Restricted moderator diagnostic chat summary |
 
 Do not attach a Twitch chat trigger to any backup, restore, migration, debug,
 diagnostic, or reconciliation action. A timed event is appropriate only for
@@ -157,7 +158,17 @@ This rewrites milestone arrays in the three standalone C# actions and validates
 the registry. It does NOT create commands in your Streamer.bot application.
 Keep the UI commands/triggers matched to the generated command registry.
 
+## Versioned migration plan
+
+Migration definitions are recorded in `config/migrations.json`. To preview the path from an existing **v3** backup without modifying data:
+
+    python tools/plan-migration.py backup.json --from-version 3
+
+Or use `--from-version 4` for deployed v4. The JSON export schemaVersion (currently 1) and application data `ci_schema_version` (currently 5) are different version numbers.
+
 ## CI and releases
+
+A separate C# compile job uses documented API-shaped stubs and the .NET SDK to catch source-level errors, but it does **not** compile against Streamer.bot's real assemblies. Live C# compile and Twitch redemption testing remain necessary.
 
 Python unit tests cover the credit accounting model, JSON backup verification,
 reconciliation and synthetic sandbox. GitHub Actions also checks milestone
