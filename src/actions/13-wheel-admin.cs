@@ -3,11 +3,12 @@ using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Text.RegularExpressions;
 
 public class CPHInline
 {
     // Moderator/broadcaster ONLY, also restrict command permissions in UI.
-    // !wheeladmin list [YYYY-MM] | rename ID New Title | remove ID | restore ID
+    // !wheeladmin list [YYYY-MM] | approve ID | reject ID | rename ID New Title | remove ID | restore ID
     // Existing entries are NEVER deleted; removed entries retain their credit spend.
     private class Entry {
         public string id {get;set;}
@@ -20,6 +21,9 @@ public class CPHInline
         public bool removed {get;set;}
         public string removedAtUtc {get;set;}
         public string removedBy {get;set;}
+        public string status {get;set;}
+        public string slotId {get;set;}
+        public string replacedBy {get;set;}
     }
     public bool Execute()
     {
@@ -51,12 +55,12 @@ public class CPHInline
             var entries=Load(month);
             if(entries==null) return false;
             var preview=String.Join(" | ",entries.Take(3).Select(x =>
-                (x.removed?"[removed]":"")+(x.id??"missing") + ":" + (x.game??"").Substring(0,Math.Min(20,(x.game??"").Length))));
-            CPH.SendMessage($"Wheel {month}: {entries.Count(x=>!x.removed)} active / {entries.Count} recorded. First 3: {preview}. Check Streamer.bot logs for all IDs.");
-            foreach(var e in entries) CPH.LogInfo($"WHEEL {month} id={e.id} game={e.game} user={e.user} date={e.date} removed={e.removed}");
+                (x.removed?"[removed]":(x.status??"approved")+" ") +(x.id??"missing") + ":" + (x.game??"").Substring(0,Math.Min(20,(x.game??"").Length))));
+            CPH.SendMessage($"Wheel {month}: {entries.Count(x=>!x.removed && (String.IsNullOrWhiteSpace(x.status) || x.status=="approved"))} approved / {entries.Count(x=>x.status=="pending")} pending / {entries.Count} recorded. First 3: {preview}. Check Streamer.bot logs for all IDs.");
+            foreach(var e in entries) CPH.LogInfo($"WHEEL {month} id={e.id} game={e.game} user={e.user} date={e.date} status={e.status??"approved"} removed={e.removed} replacedBy={e.replacedBy}");
             return true;
         }
-        if (!(op=="remove"||op=="restore"||op=="rename") || parts.Length<(op=="rename"?3:2))
+        if (!(op=="remove"||op=="restore"||op=="rename"||op=="approve"||op=="reject") || parts.Length<(op=="rename"?3:2))
         {Usage();return true;}
         string target=parts[1];
         if (!System.Text.RegularExpressions.Regex.IsMatch(target,@"^(?:[a-fA-F0-9]{32}|chat-[A-Za-z0-9_\-]{8,100}|legacy-[A-Za-z0-9_\-]{5,100})$")) {
@@ -90,7 +94,25 @@ public class CPHInline
         catch(Exception ex) {CPH.LogError("Wheel admin refused: audit JSON invalid: "+ex.Message);return false;}
         string before=item.game;
         bool priorRemoved=item.removed;
-        if(op=="rename") {
+        string priorStatus=item.status;
+        if(op=="approve" || op=="reject") {
+            if(item.removed || !String.IsNullOrWhiteSpace(item.replacedBy)) {
+                CPH.SendMessage("This game was removed or replaced and cannot be reviewed.");
+                return true;
+            }
+            if(op=="approve") {
+                string normalized=Regex.Replace((item.game??"").Trim(),@"\s+"," ").ToLowerInvariant();
+                if(found.Any(x=>x!=item && !x.removed &&
+                    (String.IsNullOrWhiteSpace(x.status)||x.status=="approved") &&
+                    Regex.Replace((x.game??"").Trim(),@"\s+"," ").ToLowerInvariant()==normalized)) {
+                    CPH.SendMessage("That game is already approved. Reject this entry or choose another title.");
+                    return true;
+                }
+                item.status="approved";
+            } else {
+                item.status="rejected";
+            }
+        } else if(op=="rename") {
             string title=String.Join(" ",parts.Skip(2));
             if(title.Length<2 || title.Length>100 || title.Any(char.IsControl)) {
                 CPH.SendMessage("Game title must contain 2-100 characters.");return true;
@@ -112,11 +134,17 @@ public class CPHInline
             id=Guid.NewGuid().ToString("N"),
             atUtc=DateTimeOffset.UtcNow.ToString("o"),actorId,actor,
             operation=op, entryId=target, month=item.month,
-            before,after=item.game,removedBefore=priorRemoved,removedAfter=item.removed
+            before,after=item.game,removedBefore=priorRemoved,removedAfter=item.removed,
+            statusBefore=priorStatus,statusAfter=item.status
         }));
         CPH.SetGlobalVar(auditKey,audit.ToString(Formatting.None),true);
         CPH.LogInfo($"WHEELADMIN operation={op} actor={actor}({actorId}) entry={target} {before} -> {item.game}");
-        CPH.SendMessage($"Wheel entry {target}: {op} complete. Game credits were NOT refunded.");
+        if(op=="reject")
+            CPH.SendMessage($"@{item.user}, '{item.game}' wasn't approved. Use !addgame New Title to replace it this month. No extra credit needed.");
+        else if(op=="approve")
+            CPH.SendMessage($"🎮 '{item.game}' is approved for the wheel!");
+        else
+            CPH.SendMessage($"Wheel entry {target}: {op} done. No credits refunded.");
         return true;
     }
     private List<Entry> Load(string month) {
@@ -135,5 +163,5 @@ public class CPHInline
         try { return TimeZoneInfo.ConvertTime(utc,TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time")); }
         catch(TimeZoneNotFoundException) {return TimeZoneInfo.ConvertTime(utc,TimeZoneInfo.FindSystemTimeZoneById("America/New_York"));}
     }
-    private void Usage() {CPH.SendMessage("!wheeladmin list [YYYY-MM] | remove ID | restore ID | rename ID New Title");}
+    private void Usage() {CPH.SendMessage("!wheeladmin list [YYYY-MM] | approve ID | reject ID | rename ID Title | remove ID | restore ID");}
 }
