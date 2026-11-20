@@ -50,10 +50,10 @@ The importer validates the JSON structure, supported field types, user IDs, and 
 1. Keep the v3 export JSON as a permanent, private reference.
 2. Confirm the `Community Checkins` queue is **Blocking**.
 3. Create **CI - Migrate Legacy Wheel** with `08-migrate-legacy-wheel.cs` (manual-only, no triggers).
-4. Temporarily disable any `!game` command if your setup already has one.
+4. Temporarily disable any legacy `!game` command if your setup already has one.
 5. Manually run the migration action. In v3 there may be **no wheel entries**; that is normal. The action initializes `ci_wheel_earned` from each viewer's lifetime total (plus existing spent/earned history), sets `ci_wheel_legacy_migrated=true` and `ci_schema_version=5`, and leaves user totals and streaks unchanged.
 6. Inspect the log. Only then replace the runtime actions with the PR version; compile them individually.
-7. If upgrading directly from v3, create the `!game` and `!wheel` commands; these are not part of the original v3 Channel Points workflow.
+7. If upgrading directly from v3, create the `!addgame` and `!wheel` commands; these are not part of the original v3 Channel Points workflow.
 8. Run the manual export again to confirm the migrated state, then test the commands offline.
 9. Re-enable live Channel Points redemptions only when test results look correct.
 
@@ -87,7 +87,7 @@ When finished, put the constants back to `DebugEnabled=false` and `DryRun=true`,
 - Preview edits without writing; then set/add/remove/reset totals or change streaks.
 - Verify credit high-water behavior with `!checkins` / `!wheel` in Twitch chat if the bot is connected, without being live.
 - Export current state and compare it against an earlier backup.
-- Test `!game Game Title` in chat while offline if the wheel migration flag is set and the viewer has available credits. It **spends a real credit** and adds a real entry, so use a dedicated test account or make a backup first.
+- Test `!addgame Game Title` in chat while offline if the wheel migration flag is set and the viewer has available credits. It **spends a real credit** and adds a real entry, so use a dedicated test account or make a backup first.
 
 **Not supported without a stream:** a genuine Channel Points redemption and a true consecutive-stream check-in. Manual debug editing is intentionally not a synthetic stream event.
 
