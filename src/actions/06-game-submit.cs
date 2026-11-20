@@ -184,6 +184,13 @@ public class CPHInline
             return false;
         }
 
+        // A journal from an older v5 build may predate moderation fields.
+        // Never let recovery silently bypass the new approval queue.
+        if (String.IsNullOrWhiteSpace(pending.entry.slotId))
+            pending.entry.slotId = pending.entry.id;
+        if (String.IsNullOrWhiteSpace(pending.entry.status))
+            pending.entry.status = "pending";
+
         string key = "ci_wheel_month_" + pending.entry.month.Replace('-', '_');
         List<WheelEntry> entries;
         try { entries = Load(key); }
