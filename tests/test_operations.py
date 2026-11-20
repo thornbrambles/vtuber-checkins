@@ -115,6 +115,24 @@ class SandboxTests(unittest.TestCase):
             self.assertEqual(x["users"]["test_alice"]["earned"], 2)
             self.assertEqual(x["users"]["test_alice"]["spent"], 1)
 
+    def test_monthly_limit_preserves_credits(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "sandbox.json"
+            self.run_sandbox("init", path)
+            self.run_sandbox("set", path, viewer="test_alice", value=50)
+            self.run_sandbox("set", path, viewer="test_bob", value=10)
+            for title in ("Game One", "Game Two", "Game Three"):
+                self.run_sandbox("game", path, viewer="test_alice", title=title)
+            with self.assertRaisesRegex(ops.CheckinError, "Monthly game submission limit"):
+                self.run_sandbox("game", path, viewer="test_alice", title="Game Four")
+            state = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(state["users"]["test_alice"]["earned"], 5)
+            self.assertEqual(state["users"]["test_alice"]["spent"], 3)
+            self.assertEqual(len(state["wheel"]), 3)
+            # The cap is per viewer, not channel-wide.
+            state = self.run_sandbox("game", path, viewer="test_bob", title="Bob Game")
+            self.assertEqual(state["users"]["test_bob"]["spent"], 1)
+
     def test_production_snapshot_not_accepted_as_sandbox(self):
         with tempfile.TemporaryDirectory() as temp:
             path = pathlib.Path(temp) / "live-backup.json"
