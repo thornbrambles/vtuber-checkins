@@ -73,6 +73,26 @@ public class CPHInline
             catch(Exception ex) { Add(findings,"error","BAD_PENDING","Unparseable transaction for "+r.UserId+": "+ex.Message); }
         }
 
+        // Catch missing/disabled chat command registrations — a common cause
+        // of !checkins producing no Twitch chat response. The configured command
+        // phrase is in Commands, not the friendly Name field.
+        try
+        {
+            var configured=CPH.GetCommands();
+            string[] expected={"!checkins","!checkinboard","!wheel","!game","!checkinadmin","!wheeladmin","!checkindiag"};
+            foreach(string phrase in expected)
+            {
+                var matching=configured.Where(cmd=>cmd!=null &&
+                    cmd.Commands!=null && cmd.Commands.Any(x=>String.Equals(x,phrase,StringComparison.OrdinalIgnoreCase))).ToList();
+                if(matching.Count==0) Add(findings,"warn","COMMAND_MISSING","No Streamer.bot command registered for "+phrase);
+                else if(!matching.Any(cmd=>cmd.Enabled))
+                    Add(findings,"warn","COMMAND_DISABLED","Command is disabled: "+phrase);
+            }
+        }
+        catch(Exception ex) {
+            Add(findings,"warn","COMMANDS_UNAVAILABLE","Unable to inspect command registrations: "+ex.Message);
+        }
+
         var allGlobals = CPH.GetGlobalVarValues(true);
         foreach (var variable in allGlobals)
         {
