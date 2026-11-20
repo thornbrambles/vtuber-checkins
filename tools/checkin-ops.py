@@ -24,7 +24,7 @@ import pathlib
 import re
 import sys
 from collections import Counter, defaultdict
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SCHEMA_VERSION = 1
 BACKUP_FORMAT = "vtuber-checkins-backup"
@@ -247,7 +247,14 @@ def sandbox_main(args):
                 raise CheckinError("No game credits available")
             viewer["spent"] += 1
             now = dt.datetime.now(dt.timezone.utc)
-            month = now.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m")
+            try:
+                eastern = ZoneInfo("America/New_York")
+            except ZoneInfoNotFoundError:
+                # Windows Python may lack the IANA tzdata package. This only
+                # affects synthetic sandbox display dates, never production.
+                eastern = dt.timezone.utc
+                print("WARNING: IANA timezone data unavailable; using UTC in sandbox", file=sys.stderr)
+            month = now.astimezone(eastern).strftime("%Y-%m")
             state["wheel"].append({
                 "id": f"sandbox-{len(state['wheel'])+1}",
                 "user": name, "game": args.title, "month": month, "utc": now.isoformat()
