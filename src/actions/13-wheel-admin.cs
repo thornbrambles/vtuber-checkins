@@ -81,6 +81,13 @@ public class CPHInline
             item=match;found=list;foundKey=v.VariableName;
         }
         if(item==null) { CPH.SendMessage("Wheel entry ID not found.");return true; }
+        // Validate the audit ledger BEFORE modifying the entry. A corrupt audit
+        // trail must not allow silent wheel changes.
+        string auditKey="ci_wheel_audit_json";
+        var auditText=CPH.GetGlobalVar<string>(auditKey,true);
+        JArray audit;
+        try { audit=String.IsNullOrWhiteSpace(auditText)?new JArray():JArray.Parse(auditText); }
+        catch(Exception ex) {CPH.LogError("Wheel admin refused: audit JSON invalid: "+ex.Message);return false;}
         string before=item.game;
         bool priorRemoved=item.removed;
         if(op=="rename") {
@@ -101,11 +108,6 @@ public class CPHInline
         // Write the entry first, then append audit. Audit is best effort and
         // should be reconciled against repository backups if a write crashes.
         CPH.SetGlobalVar(foundKey,JsonConvert.SerializeObject(found),true);
-        string auditKey="ci_wheel_audit_json";
-        var auditText=CPH.GetGlobalVar<string>(auditKey,true);
-        JArray audit;
-        try { audit=String.IsNullOrWhiteSpace(auditText)?new JArray():JArray.Parse(auditText); }
-        catch(Exception ex) {CPH.LogError("Wheel edit saved, but audit JSON invalid: "+ex.Message);return false;}
         audit.Add(JObject.FromObject(new {
             id=Guid.NewGuid().ToString("N"),
             atUtc=DateTimeOffset.UtcNow.ToString("o"),actorId,actor,
