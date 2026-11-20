@@ -23,6 +23,8 @@ jobs:
         run: python tools/sync-config.py --check
       - name: Run policy, backup, reconciliation and sandbox tests
         run: python -m unittest discover -s tests -v
+      - name: Validate actual OBS wheel animation script (Node built-in test runner)
+        run: node --test tests/test-wheel-overlay.mjs
 
   csharp-compile:
     runs-on: ubuntu-latest
