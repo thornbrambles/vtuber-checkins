@@ -9,8 +9,13 @@ public class CPHInline
     // Syntax: !checkinadmin view|set|add|remove|reset|streak @username [number]
     private static readonly int[] Thresholds = { 5, 10, 25, 50, 100, 250, 500 };
     private static readonly string[] Badges = {
-        "Sprout", "Sapling", "Grove Keeper", "Forest Friend", "Ancient Oak",
-        "Woodland Guardian", "Legend of the Grove"
+        "Sprout",
+        "Sapling",
+        "Grove Keeper",
+        "Forest Friend",
+        "Ancient Oak",
+        "Woodland Guardian",
+        "Legend of the Grove"
     };
     private const int MaxTotal = 1000000;
 
