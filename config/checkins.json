@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 5,
+  "reward": {
+    "points": 1,
+    "name": "🌿 Stream Check-in",
+    "creditsEvery": 10
+  },
+  "milestones": [
+    {
+      "count": 5,
+      "badge": "Sprout"
+    },
+    {
+      "count": 10,
+      "badge": "Sapling"
+    },
+    {
+      "count": 25,
+      "badge": "Grove Keeper"
+    },
+    {
+      "count": 50,
+      "badge": "Forest Friend"
+    },
+    {
+      "count": 100,
+      "badge": "Ancient Oak"
+    },
+    {
+      "count": 250,
+      "badge": "Woodland Guardian"
+    },
+    {
+      "count": 500,
+      "badge": "Legend of the Grove"
+    }
+  ],
+  "commands": [
+    {
+      "name": "!checkins",
+      "access": "everyone",
+      "match": "exact",
+      "action": "04-mycheckins.cs"
+    },
+    {
+      "name": "!checkinboard",
+      "access": "everyone",
+      "match": "exact",
+      "action": "03-leaderboard.cs"
+    },
+    {
+      "name": "!wheel",
+      "access": "everyone",
+      "match": "starts-with",
+      "action": "07-wheel-commands.cs"
+    },
+    {
+      "name": "!game",
+      "access": "everyone",
+      "match": "starts-with",
+      "action": "06-game-submit.cs"
+    },
+    {
+      "name": "!checkinadmin",
+      "access": "moderator",
+      "match": "starts-with",
+      "action": "05-admin-checkins.cs"
+    },
+    {
+      "name": "!wheeladmin",
+      "access": "moderator",
+      "match": "starts-with",
+      "action": "13-wheel-admin.cs"
+    }
+  ]
+}
