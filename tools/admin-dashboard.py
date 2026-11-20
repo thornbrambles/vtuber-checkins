@@ -23,6 +23,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("checkin_ops", ROOT / "tools/checkin-ops.py")
 ops = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ops)
+wheel_spec = importlib.util.spec_from_file_location("wheel_export", ROOT / "tools/export-wheel.py")
+wheel_export = importlib.util.module_from_spec(wheel_spec)
+wheel_spec.loader.exec_module(wheel_export)
 
 
 def e(value):
@@ -178,6 +181,13 @@ def page(data, token, notice, query=""):
         "<input name='q' placeholder='Search viewer' style='width:240px' value='" + e(query) + "'>"
         "<button>Search</button></form>"
     )
+    wheel_forms = "".join(
+        "<form method='post' action='/exportwheel' style='display:inline'>"
+        "<input type='hidden' name='token' value='" + e(token) + "'>"
+        "<input type='hidden' name='month' value='" + e(month) + "'>"
+        "<button>Export " + e(month) + " CSV</button></form>"
+        for month in months[:6]
+    )
     return """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Check-in Admin · Offline</title>
@@ -201,7 +211,7 @@ article{background:white;border:1px solid #d5dfd5;border-radius:8px;padding:14px
 <input type="hidden" name="token" value='""" + e(token) + """'>
 <button>Save staged JSON + SHA-256</button></form></article>
 <h2>Viewer records</h2>""" + search_form + """<table><thead><tr><th>Viewer</th><th>Total · Streak</th><th>Credits</th></tr></thead><tbody>""" + html_rows + """</tbody></table>
-<h2>Game submissions</h2><table><thead><tr><th>Month</th><th>Game</th><th>Viewer</th><th>Status</th><th>Review</th></tr></thead><tbody>""" + games_html + """</tbody></table>
+<h2>Game submissions</h2>""" + wheel_forms + """<table><thead><tr><th>Month</th><th>Game</th><th>Viewer</th><th>Status</th><th>Review</th></tr></thead><tbody>""" + games_html + """</tbody></table>
 <p><small>Local snapshot management only. Keep these exports private.</small></p></body></html>"""
 
 
@@ -257,6 +267,15 @@ def serve(snapshot, output_dir, port):
                 elif self.path == "/save":
                     saved = export_snapshot(data, snapshot, output_dir)
                     notice = "Saved staged snapshot: " + str(saved) + ". Import it manually after another backup."
+                elif self.path == "/exportwheel":
+                    month = field("month")
+                    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                        raise ops.CheckinError("Invalid month")
+                    output = pathlib.Path(output_dir)
+                    output.mkdir(parents=True, exist_ok=True)
+                    target = output / ("wheel-" + month + "-" + secrets.token_hex(6) + ".csv")
+                    count = wheel_export.export(data, month, target)
+                    notice = f"Exported {count} approved games to {target}. Resolve pending reviews before spinning."
                 else:
                     self.respond(404, "Unknown action", "text/plain")
                     return
