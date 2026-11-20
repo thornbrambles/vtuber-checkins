@@ -78,6 +78,12 @@
       "action": "13-wheel-admin.cs"
     },
     {
+      "name": "!spinwheel",
+      "access": "moderator",
+      "match": "starts-with",
+      "action": "17-wheel-spin.cs"
+    },
+    {
       "name": "!checkindiag",
       "access": "moderator",
       "match": "exact",
