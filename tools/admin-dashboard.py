@@ -6,6 +6,8 @@ Then open the printed loopback URL. Nothing connects to Twitch or the running
 Streamer.bot process. Save produces a NEW validated backup for review/import.
 """
 import argparse
+import copy
+import re
 import datetime as dt
 import hashlib
 import html
@@ -56,7 +58,8 @@ def append_audit(data, record):
 
 
 def edit_user(data, user_id, total, streak):
-    matches = [u for u in data["users"] if u["userId"] == user_id]
+    staged = copy.deepcopy(data)
+    matches = [u for u in staged["users"] if u["userId"] == user_id]
     if len(matches) != 1:
         raise ops.CheckinError("Viewer not found")
     if not all(type(x) is int and 0 <= x <= 1_000_000 for x in (total, streak)):
@@ -69,17 +72,22 @@ def edit_user(data, user_id, total, streak):
     spent = user["vars"].get("ci_wheel_claimed", 0)
     user["vars"]["ci_wheel_earned"] = max(
         user["vars"].get("ci_wheel_earned", 0), spent, total // 10)
-    append_audit(data, {
+    append_audit(staged, {
         "type": "ADMIN_EDIT", "userId": user_id,
         "totalBefore": old_total, "totalAfter": total,
         "streakBefore": old_streak, "streakAfter": user["vars"]["ci_streak"]
     })
+    data.clear()
+    data.update(staged)
 
 
 def review_entry(data, month, entry_id, decision):
     if decision not in ("approved", "rejected"):
         raise ops.CheckinError("Only approve/reject is supported")
-    key, entries = month_entries(data, month)
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+        raise ops.CheckinError("Invalid YYYY-MM month")
+    staged = copy.deepcopy(data)
+    key, entries = month_entries(staged, month)
     matches = [x for x in entries if x.get("id") == entry_id]
     if len(matches) != 1:
         raise ops.CheckinError("Game entry not found or duplicate ID")
@@ -93,12 +101,14 @@ def review_entry(data, month, entry_id, decision):
             raise ops.CheckinError("Same game already approved this month")
     before = entry.get("status", "approved")
     entry["status"] = decision
-    data["globals"][key] = json.dumps(entries, separators=(",", ":"), ensure_ascii=False)
-    append_audit(data, {
+    staged["globals"][key] = json.dumps(entries, separators=(",", ":"), ensure_ascii=False)
+    append_audit(staged, {
         "type": "WHEEL_REVIEW", "operation": decision,
         "entryId": entry_id, "month": month, "statusBefore": before,
         "statusAfter": decision
     })
+    data.clear()
+    data.update(staged)
 
 
 def export_snapshot(data, original, output_dir):
