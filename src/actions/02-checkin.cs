@@ -43,8 +43,10 @@ public class CPHInline
         int streamId = CPH.GetGlobalVar<int>("ci_stream_id", true);
         if (streamId <= 0)
         {
-            CPH.SendMessage("Check-ins aren't open yet. Your Channel Points will be refunded.");
-            CancelRedemption("stream not initialized");
+            bool refunded = CancelRedemption("stream not initialized");
+            CPH.SendMessage(refunded
+                ? $"🌿 @{userName}, your check-in was NOT recorded because the stream has not started. Your Channel Points redemption was canceled for a refund."
+                : $"⚠️ @{userName}, your check-in was NOT recorded because the stream has not started. The refund could not be confirmed; please contact a moderator.");
             return true;
         }
 
@@ -61,8 +63,10 @@ public class CPHInline
                     CPH.LogWarn("Previously recorded redemption " + redemptionId + " could not be fulfilled. Inspect the queue.");
                 return true;
             }
-            CPH.SendMessage($"@{userName}, you're already checked in for this stream! This duplicate redemption will be refunded.");
-            CancelRedemption("duplicate check-in");
+            bool refunded = CancelRedemption("duplicate check-in");
+            CPH.SendMessage(refunded
+                ? $"🌿 @{userName}, you are already checked in for this stream. No extra check-in was added; this duplicate redemption was canceled for a refund."
+                : $"⚠️ @{userName}, you are already checked in for this stream. No extra check-in was added, but the refund could not be confirmed. Please contact a moderator.");
             return true;
         }
 
@@ -94,11 +98,18 @@ public class CPHInline
             }
         }
 
-        CPH.SendMessage($"🌿 @{userName} checked in! Lifetime: {total} | Streak: {streak} | Here today: {count}");
-        if (earnedCredits > previousEarnedCredits)
-            CPH.SendMessage($"🎮 @{userName} reached {total} check-ins and earned a game submission! Use !game Game Title.");
+        string streakText = streak == 1 ? "a new streak started" : streak + "-stream streak";
+        string welcome = total == 1 ? "Welcome to the Grove!" : "You're checked in!";
+        CPH.SendMessage($"✅ 🌿 @{userName} — {welcome} Check-in #{total} • {streakText} • {count} viewer(s) checked in today. Your next step: !checkins for your progress.");
+
         if (unlocked != "")
-            CPH.SendMessage($"🏆 @{userName} unlocked the {unlocked} badge for {total} check-ins!");
+            CPH.SendMessage($"🏆 Milestone unlocked! @{userName} earned the {unlocked} badge for {total} total check-ins!");
+
+        if (earnedCredits > previousEarnedCredits)
+        {
+            int availableCredits = Math.Max(0, earnedCredits - usedCredits);
+            CPH.SendMessage($"🎮 Game wheel credit earned! @{userName} now has {availableCredits} available. Submit a game with !game Game Title.");
+        }
 
         AppendAudit(new {
             id="checkin-"+redemptionId, type="CHECKIN", atUtc=DateTimeOffset.UtcNow.ToString("o"),
@@ -132,15 +143,18 @@ public class CPHInline
         catch (Exception ex) { CPH.LogError("CHECKIN AUDIT FAILED: " + ex.Message); }
     }
 
-    private void CancelRedemption(string reason)
+    private bool CancelRedemption(string reason)
     {
         string rewardId, redemptionId;
         if (CPH.TryGetArg("rewardId", out rewardId) && !String.IsNullOrWhiteSpace(rewardId) &&
             CPH.TryGetArg("redemptionId", out redemptionId) && !String.IsNullOrWhiteSpace(redemptionId))
         {
-            if (!CPH.TwitchRedemptionCancel(rewardId, redemptionId))
-                CPH.LogWarn("Unable to refund redemption " + redemptionId + " (" + reason + "). Check Twitch redemption queue.");
+            bool canceled = CPH.TwitchRedemptionCancel(rewardId, redemptionId);
+            if (!canceled)
+                CPH.LogWarn("Unable to cancel redemption " + redemptionId + " (" + reason + "). Check Twitch redemption queue.");
+            return canceled;
         }
+        return false;
     }
 
     private void Publish(int streamId, int count, string latest, string milestone, int total, int streak)
