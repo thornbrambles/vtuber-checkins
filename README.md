@@ -1,12 +1,14 @@
 # VTuber Check-ins
 
-A Twitch Channel Points check-in system for Streamer.bot, with persistent lifetime counts, consecutive-stream streaks, milestones, moderator controls, an OBS leaderboard visible for 60 seconds after a successful check-in, and monthly game wheel credits (one submission per ten lifetime check-ins).
+A Twitch Channel Points check-in system for Streamer.bot, with persistent lifetime counts, consecutive-stream streaks, milestones, moderator controls, an OBS leaderboard visible for 60 seconds after a successful check-in, and monthly game wheel credits (one credit per ten lifetime check-ins, up to three submissions per viewer each month, with moderator review).
 
 ## Reliability and operations
 
 - [Operational runbook](docs/OPERATIONS.md): backups, dry-run restore, diagnostics, reconciliation, moderation, safe upgrades and production test gates
 - [Central configuration](config/checkins.json): authoritative milestones, reward interval and command registration intent
-- [Offline synthetic sandbox](tools/checkin-ops.py): simulated streams and game credits, separate from production Streamer.bot
+- [Offline synthetic sandbox](tools/checkin-ops.py): simulated streams, game review and credits, separate from production Streamer.bot
+- [Local admin dashboard](tools/admin-dashboard.py): stage edits and approve/reject games from a private exported backup; generates importable snapshots, **never writes live**
+- [Real Streamer.bot acceptance checklist](docs/STREAMERBOT-ACCEPTANCE.md): redemption, duplicate delivery, month rollover, moderator review and backup validation
 - [Full chat command reference](docs/COMMANDS.md): includes moderator `!wheeladmin` controls
 
 ## Components
@@ -20,11 +22,11 @@ A Twitch Channel Points check-in system for Streamer.bot, with persistent lifeti
 
 See [the full command catalog](docs/COMMANDS.md) for usage, permissions, examples and effects.
 
-`!checkins` shows your count and credits; `!checkinboard` shows the leaderboard; `!addgame Game Title` submits a wheel entry; `!wheel` checks credits and `!wheel list` shows monthly entries.
+`!checkins` shows attendance and credits. `!addgame Game Title` spends one earned credit and queues a game for moderator approval (maximum three per viewer per Eastern calendar month). `!wheel` checks credits and submitted slots; `!wheel list` shows only approved games. Rejected titles can be replaced without another credit or monthly slot in the same month.
 
 ## Admin commands
 
-`!checkinadmin view @user`, `set @user N`, `add @user N`, `remove @user N`, `streak @user N`, and `reset @user`. Restrict this command to Twitch moderators and the broadcaster.
+`!checkinadmin view @user`, `set @user N`, `add @user N`, `remove @user N`, `streak @user N`, and `reset @user`. `!wheeladmin approve ID` / `reject ID` review game submissions; rename, remove and restore are also available. Restrict these commands to Twitch moderators and the broadcaster.
 
 ## v3 migration, backup and offline debug
 
