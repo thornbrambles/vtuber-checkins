@@ -4,6 +4,7 @@ using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Security.Cryptography;
 
 public class CPHInline
 {
@@ -22,7 +23,7 @@ public class CPHInline
         "ci_badge", "ci_last_redemption_id", "ci_wheel_pending_json"
     };
     private static readonly HashSet<string> IntGlobalKeys = new HashSet<string> {
-        "ci_stream_id", "ci_stream_count"
+        "ci_stream_id", "ci_stream_count", "ci_schema_version"
     };
     private static readonly HashSet<string> LongGlobalKeys = new HashSet<string> {
         "ci_last_checkin_at_ms"
@@ -47,6 +48,22 @@ public class CPHInline
         {
             CPH.LogError("CHECKIN IMPORT: file is larger than 20 MiB; refused.");
             return false;
+        }
+
+        string checksumPath = path + ".sha256";
+        if (File.Exists(checksumPath))
+        {
+            string sidecar = File.ReadAllText(checksumPath).Trim();
+            string expected = sidecar.Split(new[]{' ', '\t'}, StringSplitOptions.RemoveEmptyEntries)[0];
+            string actual;
+            using (var sha = SHA256.Create())
+            using (var input = File.OpenRead(path))
+                actual = BitConverter.ToString(sha.ComputeHash(input)).Replace("-", "").ToLowerInvariant();
+            if (!String.Equals(expected,actual,StringComparison.OrdinalIgnoreCase))
+            {
+                CPH.LogError("CHECKIN IMPORT refused: SHA-256 checksum mismatch.");
+                return false;
+            }
         }
 
         JObject root;
