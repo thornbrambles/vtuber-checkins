@@ -8,6 +8,8 @@
 
 **All commands and permissions:** [COMMANDS.md](COMMANDS.md).
 
+A local-only admin dashboard for private backup files is available at `tools/admin-dashboard.py`. It stages modifications into new importable JSON with checksums; it is **not directly connected to Streamer.bot**. Read [OPERATIONS.md](OPERATIONS.md) and [STREAMERBOT-ACCEPTANCE.md](STREAMERBOT-ACCEPTANCE.md) before using it.
+
 This repository contains standalone Streamer.bot C# action bodies and an OBS HTML overlay. It is **not** an importable Streamer.bot package. Follow the steps in order. Back up Streamer.bot before changing an existing setup.
 
 ## Requirements
@@ -57,6 +59,11 @@ Under Actions & Queues > Actions, create each action below, assigned to the Comm
 | CI - Wheel Admin | src/actions/13-wheel-admin.cs | Core > Commands > Command Triggered (!wheeladmin) |
 | CI - Diagnostics | src/actions/12-diagnostics.cs | Manual (no trigger; called by CI - Diagnostic Command) |
 | CI - Diagnostic Command | src/actions/15-diagnostic-command.cs | Core > Commands > Command Triggered (!checkindiag) |
+| CI - Month Rollover | src/actions/16-month-rollover.cs | Off-stream local timed trigger, daily at ~00:10 Eastern; no chat/Twitch trigger |
+
+**Review flow:** New `!addgame Title` entries are **pending**, do not appear in `!wheel list`, and consume one credit/one of three monthly slots. Mods use `!wheeladmin list`, then `!wheeladmin approve ID` or `reject ID`. Rejected submissions can be replaced with another `!addgame Title` within the same calendar month without another credit or slot. Check [COMMANDS.md](COMMANDS.md).
+
+**Monthly rollover:** `CI - Month Rollover` rebuilds the previous month's approved-only archive in persisted `ci_wheel_archive_YYYY_MM`. It does not pick a winner or alter the OBS overlay. See [OPERATIONS.md](OPERATIONS.md) for CSV export and scheduling.
 
 Trigger names/locations vary with Streamer.bot version. Use the corresponding Twitch stream-online, reward-redemption and command-trigger events if menu labels differ.
 
