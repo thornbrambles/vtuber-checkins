@@ -5,6 +5,7 @@ on:
     branches: [main, refactor/wheel-ledger-and-commands]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

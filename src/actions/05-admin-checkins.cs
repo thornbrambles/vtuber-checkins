@@ -22,9 +22,10 @@ public class CPHInline
 
     public bool Execute()
     {
-        if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_checkin_pending_json", true)))
+        if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_checkin_pending_json", true)) ||
+            !String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_stream_start_pending_json", true)))
         {
-            CPH.LogError("Pending check-in must be recovered by CI - Viewer Check-in before changing accounting state.");
+            CPH.LogError("Recover the pending check-in or stream transition before changing accounting state.");
             return false;
         }
         string actorId, actor;

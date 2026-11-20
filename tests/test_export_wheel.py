@@ -13,6 +13,19 @@ spec.loader.exec_module(wheel)
 
 
 class WheelExportTests(unittest.TestCase):
+    def test_legacy_approval_accepts_null_blank_and_missing_status(self):
+        rows = [{"month": "2026-11", "game": "Missing"},
+                {"month": "2026-11", "game": "Null", "status": None},
+                {"month": "2026-11", "game": "Blank", "status": "  "}]
+        self.assertEqual(wheel.eligible_entries(rows, "2026-11"), rows)
+
+    def test_backup_with_journal_but_no_ledger_row_is_not_final(self):
+        source = {"format": "vtuber-checkins-backup", "globals": {}, "users": [
+            {"vars": {"ci_wheel_pending_json": json.dumps({"entry": {"month": "2026-11"}})}}]}
+        with self.assertRaisesRegex(ValueError, "unfinished game submissions"):
+            wheel.eligible_entries(source, "2026-11")
+        self.assertEqual(wheel.eligible_entries(source, "2026-10"), [])
+
     def setUp(self):
         self.entries = [
             {"id": "a", "game": "Good Game", "user": "alice", "date": "2026-11-21",

@@ -24,6 +24,7 @@ class DashboardRegressionTests(unittest.TestCase):
         data = fixture()
         data["globals"].update(ci_stream_id=7, ci_stream_count=1)
         data["users"][0]["vars"].update(ci_last_stream=7, ci_reward_last_stream=7, ci_badge="Forest Friend")
+        before = json.loads(json.dumps(data))
         dashboard.edit_user(data, "1234", 0, 12)
         values = data["users"][0]["vars"]
         self.assertEqual(values["ci_last_stream"], 0)
@@ -35,8 +36,9 @@ class DashboardRegressionTests(unittest.TestCase):
         dashboard.edit_user(data, "1234", 0, 0)
         self.assertEqual(data["globals"]["ci_stream_count"], 0)
         with tempfile.TemporaryDirectory() as temp:
-            saved = dashboard.export_snapshot(data, pathlib.Path(temp) / "original.json", temp)
-            restored = dashboard.ops.load_backup(saved)
+            saved = dashboard.export_snapshot(data, pathlib.Path(temp) / "original.json", temp, baseline=before)
+            restored = json.loads(saved.read_text(encoding="utf-8"))
+            self.assertEqual(restored["expected"]["globals"]["ci_stream_id"], 7)
             self.assertEqual(restored["users"][0]["vars"]["ci_badge"], "")
             self.assertEqual(restored["users"][0]["vars"]["ci_last_stream"], 0)
 
@@ -109,7 +111,7 @@ class DashboardRegressionTests(unittest.TestCase):
                         first.result(timeout=5)
                         second.result(timeout=5)
                     post(port, "/save", {})
-                    saved = dashboard.ops.load_backup(next(pathlib.Path(temp).glob("staged-*.json")))
+                    saved = json.loads(next(pathlib.Path(temp).glob("staged-*.json")).read_text(encoding="utf-8"))
                     self.assertEqual([u["vars"]["ci_total"] for u in saved["users"]], [60, 20])
                     events = [json.loads(v) for k, v in saved["globals"].items() if k.startswith("ci_events_month_")]
                     self.assertEqual(sum(len(e) for e in events), 2)

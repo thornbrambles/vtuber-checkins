@@ -3,7 +3,7 @@
 
 python tools/admin-dashboard.py --backup "C:/.../checkins-2026....json"
 Then open the printed loopback URL. Nothing connects to Twitch or the running
-Streamer.bot process. Save produces a NEW validated backup for review/import.
+Streamer.bot process. Save produces a guarded edit file for review/import.
 """
 import argparse
 import copy
@@ -61,8 +61,8 @@ def append_audit(data, record):
 
 
 def edit_user(data, user_id, total, streak):
-    if data["globals"].get("ci_checkin_pending_json"):
-        raise ops.CheckinError("Recover the pending check-in in Streamer.bot and export again before editing counts")
+    if data["globals"].get("ci_checkin_pending_json") or data["globals"].get("ci_stream_start_pending_json"):
+        raise ops.CheckinError("Recover the pending check-in or stream start and export again before editing counts")
     staged = copy.deepcopy(data)
     matches = [u for u in staged["users"] if u["userId"] == user_id]
     if len(matches) != 1:
@@ -115,10 +115,10 @@ def review_entry(data, month, entry_id, decision):
         raise ops.CheckinError("Cannot review removed/replaced game")
     if decision == "approved":
         title = " ".join(entry.get("game", "").split()).casefold()
-        if any(x is not entry and not x.get("removed") and x.get("status", "approved") == "approved"
+        if any(x is not entry and not x.get("removed") and not x.get("replacedBy") and wheel_export.entry_status(x) == "approved"
                and " ".join(x.get("game", "").split()).casefold() == title for x in entries):
             raise ops.CheckinError("Same game already approved this month")
-    before = entry.get("status", "approved")
+    before = wheel_export.entry_status(entry)
     entry["status"] = decision
     staged["globals"][key] = json.dumps(entries, separators=(",", ":"), ensure_ascii=False)
     append_audit(staged, {
@@ -130,15 +130,46 @@ def review_entry(data, month, entry_id, decision):
     data.update(staged)
 
 
-def export_snapshot(data, original, output_dir):
+def staged_changes(data, baseline):
+    def changes(before, after):
+        return {key: value for key, value in after.items() if before.get(key) != value}
+
+    globals_changed = changes(baseline["globals"], data["globals"])
+    expected_globals = {key: baseline["globals"].get(key) for key in globals_changed}
+    if "ci_stream_count" in globals_changed:
+        expected_globals["ci_stream_id"] = baseline["globals"].get("ci_stream_id")
+    originals = {user["userId"]: user["vars"] for user in baseline["users"]}
+    users, expected_users = [], {}
+    for user in data["users"]:
+        uid = user["userId"]
+        before = originals[uid]
+        values = changes(before, user["vars"])
+        if values:
+            users.append({"userId": uid, "vars": values})
+            # Derived badge/credit and attendance corrections depend on these even if unchanged.
+            expected_users[uid] = {key: before.get(key) for key in set(values) | {
+                "ci_total", "ci_streak", "ci_last_stream", "ci_badge", "ci_wheel_claimed",
+                "ci_wheel_earned", "ci_reward_last_stream"
+            }}
+    return {"format": "vtuber-checkins-dashboard-edits", "schemaVersion": 1,
+            "globals": globals_changed, "users": users,
+            "expected": {"globals": expected_globals, "users": expected_users}}
+
+
+def export_snapshot(data, original, output_dir, *, baseline=None):
     ops.check_backup(data)
+    if baseline is None:
+        baseline = ops.load_backup(original)
+    changes = staged_changes(data, baseline)
+    if not changes["users"] and not changes["globals"]:
+        raise ops.CheckinError("No edits to save")
     output_dir = pathlib.Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     suffix = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     dest = output_dir / ("staged-" + suffix + ".json")
     if dest.resolve() == pathlib.Path(original).resolve():
         raise ops.CheckinError("Refusing to overwrite original backup")
-    payload = (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    payload = (json.dumps(changes, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     with dest.open("xb") as handle:
         handle.write(payload)
     digest = hashlib.sha256(payload).hexdigest()
@@ -173,7 +204,7 @@ def page(data, token, notice, query=""):
         for x in entries:
             if x.get("replacedBy"):
                 continue
-            status = x.get("status", "approved")
+            status = wheel_export.entry_status(x)
             entry_id = e(x.get("id", ""))
             actions = ""
             if not x.get("removed"):
@@ -232,7 +263,9 @@ article{background:white;border:1px solid #d5dfd5;border-radius:8px;padding:14px
 
 
 def serve(snapshot, output_dir, port):
-    data = ops.load_backup(snapshot)
+    baseline = ops.load_backup(snapshot)
+    # Edit and review handlers replace the contents from a private deep copy.
+    data = baseline.copy()
     token = secrets.token_urlsafe(32)
 
     class Handler(BaseHTTPRequestHandler):
@@ -276,13 +309,13 @@ def serve(snapshot, output_dir, port):
             try:
                 if self.path == "/edit":
                     edit_user(data, field("userId"), int(field("total")), int(field("streak")))
-                    notice = "Viewer edit staged. Save to write a new backup file."
+                    notice = "Viewer edit staged. Save to write a guarded edit file."
                 elif self.path == "/review":
                     review_entry(data, field("month"), field("entryId"), field("decision"))
-                    notice = "Game review staged. Save to write a new backup file."
+                    notice = "Game review staged. Save to write a guarded edit file."
                 elif self.path == "/save":
-                    saved = export_snapshot(data, snapshot, output_dir)
-                    notice = "Saved staged snapshot: " + str(saved) + ". Import it manually after another backup."
+                    saved = export_snapshot(data, snapshot, output_dir, baseline=baseline)
+                    notice = "Saved edit file: " + str(saved) + ". Import it manually after another backup."
                 elif self.path == "/exportwheel":
                     month = field("month")
                     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):

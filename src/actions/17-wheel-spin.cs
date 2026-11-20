@@ -155,6 +155,23 @@ public class CPHInline
             return true;
         }
 
+        // A submission may have reached its journal but not the month ledger.
+        try
+        {
+            foreach (var journal in CPH.GetTwitchUsersVar<string>("ci_wheel_pending_json", true))
+            {
+                if (String.IsNullOrWhiteSpace(journal.Value)) continue;
+                var pendingMonth = (string)JObject.Parse(journal.Value).SelectToken("entry.month");
+                if (String.IsNullOrWhiteSpace(pendingMonth) || pendingMonth == month)
+                    throw new InvalidOperationException("Recover pending game submissions before finalizing the wheel.");
+            }
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("Wheel finalization blocked: " + ex.Message);
+            return false;
+        }
+
         // Always read the LIVE month ledger rather than a potentially stale
         // archive. Any unreviewed game prevents an accidental unfair draw.
         List<Entry> entries;

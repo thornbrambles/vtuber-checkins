@@ -82,6 +82,7 @@ public static class CPH {
     public static void LogError(string message) {}
     public static bool TwitchRedemptionFulfill(string rewardId, string redemptionId) { Fulfilled.Add(redemptionId); return FulfillmentSucceeds; }
     public static bool TwitchRedemptionCancel(string rewardId, string redemptionId) { Canceled.Add(redemptionId); return true; }
-    public static bool RunAction(string name, bool runImmediately=true) { return true; }
+    public static Func<string, bool> ActionRunner;
+    public static bool RunAction(string name, bool runImmediately=true) { return ActionRunner != null && ActionRunner(name); }
     public static List<CommandData> GetCommands() { return new List<CommandData>(); }
 }

@@ -12,6 +12,7 @@ public static class RuntimeTests
     }
     private static void Setup() {
         CPH.Reset();
+        CPH.ActionRunner = name => name == "CI - Start Stream" && new Action01().Execute();
         CPH.Globals["ci_stream_id"] = 7;
         CPH.Globals["ci_stream_count"] = 0;
         CPH.Users["123"] = new Dictionary<string, object> {
@@ -132,8 +133,73 @@ public static class RuntimeTests
         }
         Console.WriteLine("PASS Framework-compatible random draw bounds");
     }
+    private static void StreamAndRejectionRegression()
+    {
+        Setup(); new Action02().Execute();
+        Redeem("refunded"); new Action02().Execute();
+        Assert(CPH.Canceled.Contains("refunded"), "duplicate was not refunded");
+        CPH.Globals["ci_stream_id"] = 8;
+        new Action02().Execute();
+        Assert(CPH.Canceled.Count(x => x == "refunded") == 2, "refund replay switched outcome");
+        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_total") == 10, "refund replay awarded attendance");
+
+        for (int failure = 0; failure <= 6; failure++)
+        {
+            Setup(); CPH.Args.Clear(); CPH.Args["startedAt"] = new DateTime(2026, 11, 20);
+            CPH.Globals["ci_stream_count"] = 5;
+            CPH.FailAfterWrite = failure;
+            try { new Action01().Execute(); } catch (InvalidOperationException) {}
+            CPH.FailAfterWrite = -1;
+            Assert(new Action01().Execute(), "stream-start retry failed");
+            Assert(CPH.GetGlobalVar<int>("ci_stream_id") == 8 && CPH.GetGlobalVar<int>("ci_stream_count") == 0,
+                "stream retry did not finish exactly once at boundary " + failure);
+        }
+
+        Setup(); CPH.FailAfterWrite = 4;
+        try { new Action02().Execute(); } catch (InvalidOperationException) {}
+        CPH.FailAfterWrite = -1;
+        CPH.Args.Clear(); CPH.Args["startedAt"] = new DateTime(2026, 11, 20);
+        Assert(!new Action01().Execute(), "transition proceeded before original journal");
+        CPH.Args.Clear(); Redeem("new-stream"); CPH.Args["userId"] = "456";
+        Assert(new Action02().Execute(), "new stream check-in could not recover prior state");
+        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_last_stream") == 7, "prior check-in moved streams");
+        Assert(CPH.GetTwitchUserVarById<int>("456", "ci_last_stream") == 8 && CPH.GetGlobalVar<int>("ci_stream_count") == 1,
+            "new check-in counted against stale stream");
+        Console.WriteLine("PASS refund replay and stream-transition recovery");
+    }
+
+    private static void WheelJournalRegression()
+    {
+        Setup();
+        var month = DateTimeOffset.UtcNow.AddMonths(-2).ToString("yyyy-MM");
+        CPH.Args["userId"] = "mod"; CPH.Args["rawInput"] = month; CPH.Args["targetMonth"] = month;
+        CPH.Users["123"]["ci_wheel_pending_json"] = JObject.FromObject(new { entry = new { month } }).ToString();
+        Assert(!new Action17().Execute() && !new Action16().Execute(), "wheel finalized with unfinished submission");
+        CPH.Users["123"].Remove("ci_wheel_pending_json");
+        Assert(new Action16().Execute(), "archive remained blocked after recovery");
+        Console.WriteLine("PASS unresolved wheel journal blocks finalization");
+    }
+
+    private static void DashboardPreconditions()
+    {
+        Setup();
+        var edits = JObject.Parse(@"{""globals"":{},""users"":[{""userId"":""123"",""vars"":{""ci_total"":4}}],
+            ""expected"":{""globals"":{},""users"":{""123"":{""ci_total"":9,""ci_wheel_claimed"":null}}}}");
+        var validate = typeof(Action10).GetMethod("CheckDashboardPreconditions", BindingFlags.NonPublic | BindingFlags.Instance);
+        validate.Invoke(new Action10(), new object[] { edits });
+        CPH.Users["123"]["ci_wheel_claimed"] = 1;
+        try { validate.Invoke(new Action10(), new object[] { edits }); }
+        catch (TargetInvocationException e) when (e.InnerException is System.IO.InvalidDataException)
+        {
+            Console.WriteLine("PASS dashboard importer rejects stale wallet dependency");
+            return;
+        }
+        throw new Exception("Stale dashboard edit passed validation");
+    }
+
     public static int Main() {
         CheckinRetries(); InterruptedCheckins(); ModerationDuplicates(); FrameworkDraw();
+        StreamAndRejectionRegression(); WheelJournalRegression(); DashboardPreconditions();
         return 0;
     }
 }

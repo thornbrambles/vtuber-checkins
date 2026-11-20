@@ -13,13 +13,13 @@ saves the intended attendance, streak, stream count, credit high-water and badge
 before writing counters. On the next valid check-in event it finishes that journal
 before evaluating the incoming redemption. Keep every accounting writer in the
 same Blocking queue and replace actions 01, 02, 05, 06, 08, 10, 11 and 12 together.
-Those writers refuse changes while a check-in is pending; diagnostics reports it.
+Accounting writers wait while a check-in or stream transition is pending. CI - Start Stream journals the Twitch broadcast and its assigned stream number. The next redemption finishes the prior check-in, then completes the saved stream start before recording attendance. Diagnostics reports either unfinished record.
 After an interruption, re-run the original reward action with its original Twitch
 arguments before starting another stream or changing counts. Do not delete the
 journal to bypass the guard. Back up and inspect malformed journals manually.
 
 `ci_checkin_receipts_month_YYYY_MM` maps completed redemption IDs to viewer IDs.
-Keep these receipts with backups even across month/stream boundaries. Export and
+Keep these receipts with backups even across month and stream boundaries. Keep the ci_checkin_rejected_* records too. They preserve cancellation decisions across retries. Export and
 import already include these string globals. Existing last-redemption markers and
 retained check-in audit events are also recognized for older records; redemptions
 whose historical IDs were never retained cannot be reconstructed automatically.
@@ -124,7 +124,7 @@ Do not draw winners while an archive still reports pending games. Month-end expo
 
 Install **CI - Spin Wheel** from `17-wheel-spin.cs` with `!spinwheel` Starts With matching, restricted to Moderator/broadcaster. Install **CI - Wheel Reveal** from `18-wheel-reveal.cs` as a local timed action every approximately two seconds (in the Community Checkins Blocking queue, not a chat command). Add `overlay/game-wheel-overlay.html` to OBS as a second **Local File Browser Source**, **1920×1080**, above gameplay. Leave it enabled: transparent unless a spin is active. It does not modify the existing check-in overlay.
 
-`!spinwheel` loads the previous Eastern Time calendar month; `!spinwheel YYYY-MM` chooses another **past** month. It validates all entries, refuses to draw if any remain pending, uses `RandomNumberGenerator.GetInt32` to select a uniform random entry, **saves the result before animating**, and publishes the OBS state. Each approved submission has one equal chance. Once drawn, the month cannot be spun again accidentally. The wheel spins about **10 seconds**, reveals the saved winner for ~8 seconds, then hides. The separate timed reveal action posts the winning game in chat after the animation. No OBS animations or additional overlays appear at other times.
+`!spinwheel` loads the previous Eastern Time calendar month; `!spinwheel YYYY-MM` chooses another **past** month. It validates all entries, refuses to draw if any remain pending, uses cryptographic randomness to select a uniform random entry, **saves the result before animating**, and publishes the OBS state. Each approved submission has one equal chance. Once drawn, the month cannot be spun again accidentally. The wheel spins about **10 seconds**, reveals the saved winner for ~8 seconds, then hides. The separate timed reveal action posts the winning game in chat after the animation. No OBS animations or additional overlays appear at other times.
 
 `!spinwheel replay YYYY-MM` replays **the same winner** without charging credits or reannouncing in chat. `!spinwheel hide` hides immediately. Only the broadcaster can issue `!spinwheel reset YYYY-MM RESET-YYYY-MM` to clear the saved result and allow a new draw; the prior result and reset are retained in an audit trail. Take a backup before resetting.
 
@@ -201,7 +201,7 @@ Start it with a **verified, private** export JSON. The dashboard binds only to `
 
     python tools/admin-dashboard.py --backup "C:/Users/USER/Documents/vtuber-checkins-backups/checkins-YYYYMMDD-HHMMSS-fff.json"
 
-It lets you view check-in totals/credits and monthly wheel entries, stage total/streak edits, and approve/reject games. Its **Save staged JSON + SHA-256** operation creates a **new** snapshot under `.sandbox/staged/` while leaving the original unchanged. A new file is never applied automatically. To update production, first export/backup live Streamer.bot, manually inspect the staged changes, copy the staged JSON and checksum to the import action's expected `import.json` path, run import dry-run, then explicitly apply. Importing overwrites configured records and can conflict with changes made during the stream: do it only when the bot is stopped or Twitch submissions are disabled. Audit events are included with the staged backup. The dashboard is **not a live API connection** and is not a network-accessible moderator portal.
+Use **Save staged JSON + SHA-256** to write only the edits and the original values they depend on. With the bot idle and accounting triggers disabled, back up live state, copy the edit JSON and sidecar to the import action's expected location, and run dry-run. If a relevant live value changed, export again and restage the edit. Guarded edit files require explicit apply but do not require the full-restore overwrite switch. Keep these files private. The dashboard operates on exported data and never connects to Streamer.bot.
 
 ## Diagnostics and reconciliation
 

@@ -78,7 +78,11 @@ class DashboardTests(unittest.TestCase):
             staged = dashboard.export_snapshot(data, source, pathlib.Path(temp) / "staged")
             self.assertNotEqual(staged, source)
             self.assertTrue(pathlib.Path(str(staged) + ".sha256").exists())
-            restored = ops.load_backup(staged)
+            restored = json.loads(staged.read_text(encoding="utf-8"))
+            self.assertEqual(restored["format"], "vtuber-checkins-dashboard-edits")
+            self.assertEqual(len(restored["users"]), 1)
+            self.assertEqual(restored["expected"]["users"]["1234"]["ci_total"], 50)
+            self.assertNotIn("ci_wheel_month_2026_11", restored["globals"])
             self.assertEqual(restored["users"][0]["vars"]["ci_total"], 20)
             self.assertEqual(json.loads(source.read_text())["users"][0]["vars"]["ci_total"], 50)
 

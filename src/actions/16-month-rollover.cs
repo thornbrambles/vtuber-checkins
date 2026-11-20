@@ -3,6 +3,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 public class CPHInline
 {
@@ -38,6 +39,23 @@ public class CPHInline
                 return false;
             }
             prior = requested;
+        }
+
+        // A submission may have reached its journal but not the month ledger.
+        try
+        {
+            foreach (var journal in CPH.GetTwitchUsersVar<string>("ci_wheel_pending_json", true))
+            {
+                if (String.IsNullOrWhiteSpace(journal.Value)) continue;
+                var pendingMonth = (string)JObject.Parse(journal.Value).SelectToken("entry.month");
+                if (String.IsNullOrWhiteSpace(pendingMonth) || pendingMonth == prior)
+                    throw new InvalidOperationException("Recover pending game submissions before finalizing the wheel.");
+            }
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("Wheel finalization blocked: " + ex.Message);
+            return false;
         }
 
         string sourceKey = "ci_wheel_month_" + prior.Replace('-', '_');

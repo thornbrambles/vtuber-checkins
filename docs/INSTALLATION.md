@@ -10,6 +10,9 @@ cleanup. Replace action 13 for duplicate-safe rename/restore and action 17 for t
 Run diagnostics and the [acceptance checklist](STREAMERBOT-ACCEPTANCE.md) before
 enabling triggers. If a pending check-in is reported, follow the
 [recovery instructions](OPERATIONS.md#check-in-recovery-and-retry-receipts) first.
+Use the exact action name `CI - Start Stream` so a redemption can finish a saved
+stream transition before awarding attendance. Update the dashboard and the import
+action together so the importer recognizes the dashboard's guarded edit files.
 
 **Upgrading from deployed v3?** Begin with [V3-MIGRATION-BACKUP-DEBUG.md](V3-MIGRATION-BACKUP-DEBUG.md). You can migrate directly from v3; export existing state before changing actions.
 

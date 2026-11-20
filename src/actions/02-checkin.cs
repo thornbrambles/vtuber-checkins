@@ -26,7 +26,7 @@ public class CPHInline
             !CPH.TryGetArg("userName", out userName) || String.IsNullOrWhiteSpace(userName))
         {
             CPH.LogWarn("Check-in redemption: missing Twitch userId/userName. Check the selected Reward Redemption trigger.");
-            CancelRedemption("missing viewer identity");
+            CPH.LogWarn("Leave this redemption pending for manual review of its identity.");
             return false;
         }
 
@@ -46,9 +46,17 @@ public class CPHInline
         {
             string pending = CPH.GetGlobalVar<string>("ci_checkin_pending_json", true);
             if (!String.IsNullOrWhiteSpace(pending)) CompleteCheckin(JObject.Parse(pending));
-            if (WasProcessed(userId, redemptionId))
+            if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_stream_start_pending_json", true)))
             {
-                Fulfill(rewardId, redemptionId);
+                CPH.RunAction("CI - Start Stream", true);
+                if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_stream_start_pending_json", true)))
+                    throw new InvalidOperationException("Pending stream transition could not be finished by CI - Start Stream");
+            }
+            bool? awarded = RecordedOutcome(userId, redemptionId);
+            if (awarded.HasValue)
+            {
+                if (awarded.Value) Fulfill(rewardId, redemptionId);
+                else RetryCancellation(rewardId, redemptionId);
                 return true;
             }
         }
@@ -121,8 +129,11 @@ public class CPHInline
         return true;
     }
 
-    private bool WasProcessed(string userId, string redemptionId)
+    private bool? RecordedOutcome(string userId, string redemptionId)
     {
+        // Rejection is saved before contacting Twitch and stays terminal across streams.
+        if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_checkin_rejected_" + redemptionId, true)))
+            return false;
         // Backward compatibility for receipts created before this journal existed.
         if (CPH.GetTwitchUserVarById<string>(userId, "ci_last_redemption_id", true) == redemptionId)
             return true;
@@ -149,7 +160,7 @@ public class CPHInline
                     return true;
             }
         }
-        return false;
+        return null;
     }
 
     private void CompleteCheckin(JObject transaction)
@@ -228,12 +239,17 @@ public class CPHInline
         if (CPH.TryGetArg("rewardId", out rewardId) && !String.IsNullOrWhiteSpace(rewardId) &&
             CPH.TryGetArg("redemptionId", out redemptionId) && !String.IsNullOrWhiteSpace(redemptionId))
         {
-            bool canceled = CPH.TwitchRedemptionCancel(rewardId, redemptionId);
-            if (!canceled)
-                CPH.LogWarn("Unable to cancel redemption " + redemptionId + " (" + reason + "). Check Twitch redemption queue.");
-            return canceled;
+            CPH.SetGlobalVar("ci_checkin_rejected_" + redemptionId, reason, true);
+            return RetryCancellation(rewardId, redemptionId);
         }
         return false;
+    }
+
+    private bool RetryCancellation(string rewardId, string redemptionId)
+    {
+        bool canceled = CPH.TwitchRedemptionCancel(rewardId, redemptionId);
+        if (!canceled) CPH.LogWarn("Unable to cancel redemption " + redemptionId + ". Check Twitch redemption queue.");
+        return canceled;
     }
 
     private void Publish(int streamId, int count, string latest, string milestone, int total, int streak)
