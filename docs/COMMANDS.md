@@ -18,7 +18,7 @@ The **🌿 Stream Check-in** Channel Points redemption is separate from chat com
 
 | Event | Example |
 | --- | --- |
-| Successful check-in | `🌿 @viewer checked in! 12 total, a 4-stream streak, and 8 checked in this stream.` |
+| Successful check-in | `🌿 @viewer checked in! 12 total, a 4-stream streak, and 8 people checked in this stream.` |
 | Badge earned | `🏆 @viewer got the Sapling badge!` |
 | Wheel credit earned | `🎮 @viewer earned a game pick! 1 left. Use !game <title>.` |
 | Duplicate redemption | `@viewer, you're already checked in! Your points were refunded.` |
