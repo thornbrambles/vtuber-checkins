@@ -44,6 +44,13 @@ def run(check=False):
         raise ValueError("Duplicate chat command names")
     if cfg["reward"]["creditsEvery"] != 10:
         raise ValueError("C# credit reward currently assumes every 10 check-ins")
+    monthly_limit = cfg["reward"].get("maxSubmissionsPerViewerPerMonth")
+    if type(monthly_limit) is not int or monthly_limit != 3:
+        raise ValueError("C# game submission limit currently assumes 3 per viewer each month")
+    for name in ("06-game-submit.cs", "07-wheel-commands.cs"):
+        action = (ROOT / "src/actions" / name).read_text(encoding="utf-8")
+        if "private const int MonthlyLimit = 3;" not in action:
+            raise ValueError(f"{name} monthly limit differs from config")
     for cmd in commands:
         if not (ROOT / "src/actions" / cmd["action"]).exists():
             raise ValueError("Missing command action " + cmd["action"])
