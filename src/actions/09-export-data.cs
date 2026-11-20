@@ -4,6 +4,8 @@ using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Security.Cryptography;
+using System.Text;
 
 public class CPHInline
 {
@@ -18,6 +20,8 @@ public class CPHInline
         "ci_badge", "ci_last_redemption_id", "ci_wheel_pending_json"
     };
     private const int SchemaVersion = 1;
+    // Retain 30 most recent JSON exports. Keep at least one additional offline copy.
+    private const int RetainBackups = 30;
 
     public bool Execute()
     {
@@ -64,7 +68,22 @@ public class CPHInline
         using (var writer = new StreamWriter(file, System.Text.Encoding.UTF8))
             writer.Write(json);
 
-        CPH.LogInfo($"CHECKIN BACKUP: {users.Count} viewers and {globals.Count} globals exported to {output}");
+        // Hash the exact file bytes. Matching checksum proves integrity of the
+        // snapshot file, but does NOT prove that an import can be restored.
+        string sha;
+        using (var hasher = SHA256.Create())
+        using (var input = File.OpenRead(output))
+            sha = BitConverter.ToString(hasher.ComputeHash(input)).Replace("-", "").ToLowerInvariant();
+        File.WriteAllText(output + ".sha256", sha + "  " + Path.GetFileName(output) + Environment.NewLine, Encoding.ASCII);
+
+        // Only delete backup copies after a new snapshot and its hash exist.
+        foreach (var stale in Directory.GetFiles(folder, "checkins-*.json")
+                  .OrderByDescending(p => File.GetCreationTimeUtc(p)).Skip(RetainBackups))
+        {
+            File.Delete(stale);
+            if (File.Exists(stale + ".sha256")) File.Delete(stale + ".sha256");
+        }
+        CPH.LogInfo($"CHECKIN BACKUP: {users.Count} viewers and {globals.Count} globals exported to {output}; sha256={sha}");
         CPH.LogInfo("Treat exported JSON as PRIVATE viewer data. Do not commit the file to GitHub.");
         return true;
     }
