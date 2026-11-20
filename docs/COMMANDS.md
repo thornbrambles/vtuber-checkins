@@ -39,6 +39,10 @@ The only admin command is `!checkinadmin`, with these subcommands. Configure **S
 
 All the admin edits are logged. Manually increasing totals can unlock additional lifetime wheel entitlements when crossing a new high-water milestone; decreasing and increasing back to previous totals won't issue extra entitlements.
 
+## Diagnostics command
+
+`!checkindiag` (Exact; Moderator/broadcaster only) runs the `CI - Diagnostics` read-only action inline and posts a short status summary in Twitch chat. Full findings are stored privately in `ci_diagnostics_json` and the Streamer.bot log. It is also usable when the bot is connected but the stream is offline.
+
 ## Wheel moderator commands
 
 `!wheeladmin` (Starts With; Moderator/broadcaster only) is implemented by `13-wheel-admin.cs`. Subcommands: `!wheeladmin list [YYYY-MM]`, `!wheeladmin rename ENTRY_ID New Title`, `!wheeladmin remove ENTRY_ID`, `!wheeladmin restore ENTRY_ID`. Removals are soft-deletes and do not refund credits. All edit operations are recorded in `ci_wheel_audit_json`.
@@ -53,6 +57,7 @@ All the admin edits are logged. Manually increasing totals can unlock additional
 | `!game` | Starts With | Everyone |
 | `!checkinadmin` | Starts With | Moderator + broadcaster |
 | `!wheeladmin` | Starts With | Moderator + broadcaster |
+| `!checkindiag` | Exact | Moderator + broadcaster |
 
 The source files implement the behavior, but they **do not provision the UI command registrations or triggers**.
 
