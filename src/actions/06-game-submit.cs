@@ -8,6 +8,7 @@ public class CPHInline
 {
     // This action MUST run in the same BLOCKING queue as check-ins, admin edits,
     // wheel commands and one-time migration.
+    private const int MonthlyLimit = 3; // Per viewer, Eastern calendar month.
     private class WheelEntry
     {
         public string id { get; set; }
@@ -65,28 +66,37 @@ public class CPHInline
         string msgId;
         CPH.TryGetArg("msgId", out msgId);
         string entryId = String.IsNullOrWhiteSpace(msgId) ? Guid.NewGuid().ToString("N") : "chat-" + msgId;
-        // Twitch may redeliver a chat event after a restart. Do not spend twice
-        // for the same message ID even after its pending transaction was cleared.
-        if (!String.IsNullOrWhiteSpace(msgId))
+        // A monthly submission always uses the ledger month assigned to it.
+        // Count ALL recorded entries, including moderator-hidden games. Soft
+        // deletion does not free a slot or refund a spent credit.
+        string existingKey = "ci_wheel_month_" + local.ToString("yyyy_MM");
+        List<WheelEntry> existing;
+        try
         {
-            string existingKey = "ci_wheel_month_" + local.ToString("yyyy_MM");
-            try
-            {
-                string existingJson = CPH.GetGlobalVar<string>(existingKey, true);
-                var existing = String.IsNullOrWhiteSpace(existingJson)
-                    ? new List<WheelEntry>()
-                    : JsonConvert.DeserializeObject<List<WheelEntry>>(existingJson) ?? new List<WheelEntry>();
-                if (existing.Any(x => x != null && x.id == entryId))
-                {
-                    CPH.LogInfo("Ignoring duplicate !addgame event " + msgId);
-                    return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                CPH.LogError("Cannot check wheel submission duplicates: " + ex.Message);
-                return false;
-            }
+            string existingJson = CPH.GetGlobalVar<string>(existingKey, true);
+            existing = String.IsNullOrWhiteSpace(existingJson)
+                ? new List<WheelEntry>()
+                : JsonConvert.DeserializeObject<List<WheelEntry>>(existingJson) ?? new List<WheelEntry>();
+            if (existing.Any(x => x == null || String.IsNullOrWhiteSpace(x.userId)))
+                throw new InvalidOperationException("Invalid monthly entry.");
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("Cannot check monthly wheel ledger: " + ex.Message);
+            CPH.SendMessage("Wheel entries are unavailable right now. Please ask a mod.");
+            return false;
+        }
+        // Twitch may redeliver a chat event after a restart.
+        if (existing.Any(x => x.id == entryId))
+        {
+            CPH.LogInfo("Ignoring duplicate !addgame event " + entryId);
+            return true;
+        }
+        int submittedThisMonth = existing.Count(x => x.userId == id);
+        if (submittedThisMonth >= MonthlyLimit)
+        {
+            CPH.SendMessage($"@{name}, you've used all {MonthlyLimit} game picks for {local:MMMM}. Unused credits carry over to next month.");
+            return true;
         }
         var entry = new WheelEntry {
             id = entryId, userId = id, user = name,
@@ -99,7 +109,7 @@ public class CPHInline
         CPH.SetTwitchUserVarById(id, "ci_wheel_pending_json", JsonConvert.SerializeObject(pending), true);
         if (!RecoverPending(id)) return false;
         CPH.LogInfo($"WHEEL SUBMIT id={entry.id} user={name}({id}) game={game} date={entry.date} remaining={earned-spent-1}");
-        CPH.SendMessage($"🎮 @{name} added '{game}' to the {local:MMMM yyyy} wheel! {entry.date}. Credits remaining: {earned-spent-1}.");
+        CPH.SendMessage($"🎮 @{name} added '{game}' to the {local:MMMM yyyy} wheel! {submittedThisMonth + 1}/{MonthlyLimit} picks this month. {earned-spent-1} credits left.");
         return true;
     }
 
