@@ -55,7 +55,7 @@
       "action": "07-wheel-commands.cs"
     },
     {
-      "name": "!game",
+      "name": "!addgame",
       "access": "everyone",
       "match": "starts-with",
       "action": "06-game-submit.cs"
