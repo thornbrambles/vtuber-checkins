@@ -6,6 +6,38 @@ not have access to the Streamer.bot process; they operate on exported JSON files
 
 ## Production storage map (schema 5)
 
+### Check-in recovery and retry receipts
+
+`ci_checkin_pending_json` is a single durable check-in journal. The check-in action
+saves the intended attendance, streak, stream count, credit high-water and badge
+before writing counters. On the next valid check-in event it finishes that journal
+before evaluating the incoming redemption. Keep every accounting writer in the
+same Blocking queue and replace actions 01, 02, 05, 06, 08, 10, 11 and 12 together.
+Accounting writers wait while a check-in or stream transition is pending. CI - Start Stream journals the Twitch broadcast and its assigned stream number. The next redemption finishes the prior check-in, then completes the saved stream start before recording attendance. Diagnostics reports either unfinished record.
+After an interruption, re-run the original reward action with its original Twitch
+arguments before starting another stream or changing counts. Do not delete the
+journal to bypass the guard. Back up and inspect malformed journals manually.
+
+`ci_checkin_receipts_month_YYYY_MM` maps completed redemption IDs to viewer IDs.
+Keep these receipts with backups even across month and stream boundaries. Keep the ci_checkin_rejected_* records too. They preserve cancellation decisions across retries. Export and
+import already include these globals. Run action 08 before enabling this version.
+It copies historical check-in audit IDs to receipts, preserves existing receipts,
+and reports the specific audit partition if it cannot complete. Resolve or restore
+that partition before retrying. Once migrated, check-ins consult receipts and the
+existing last-redemption marker. IDs never saved cannot be reconstructed.
+Successful counter recovery may omit the original celebration message; Twitch
+fulfillment can be retried without awarding attendance again. This handles ordered
+write failures in the shared queue, not corrupted storage or out-of-order disk flushes.
+
+### Offline runtime regression checks
+
+The compile harness targets .NET Framework 4.8.1. On Windows with a .NET SDK,
+run `python tools/compile-actions.py` and `python tools/test-actions.py`.
+The latter executes actual action bodies with test doubles, including interrupted
+writes, cross-stream retries and duplicate-title moderation. CI runs both on
+Windows. Real Streamer.bot assembly compilation and Twitch/OBS acceptance tests
+are still required before installation.
+
 ### Twitch user variables (persisted)
 
 - ci_total — lifetime check-in count
@@ -30,7 +62,7 @@ not have access to the Streamer.bot process; they operate on exported JSON files
 - ci_wheel_spin_result_YYYY_MM — authoritative saved result for each drawn month (persisted, immutable until broadcaster reset)
 - ci_wheel_spin_overlay_json — transient OBS wheel presentation data; expires after ~18 seconds
 - ci_wheel_spin_audit_json — draw/reset history
-- ci_wheel_spin_last_announced_id — guard against duplicate winner chat announcements
+- `revealAtMs` and `announced` on the saved spin result control the winner announcement. Replay and hide only change OBS presentation.
 - ci_events_month_YYYY_MM — check-in/admin/game event audit history (new events only)
 - ci_diagnostics_json, ci_reconciliation_json — last machine-readable health reports
 
@@ -80,7 +112,7 @@ a separately audited administrative policy.
 
 On the 1st of the month, the date-scoped ledger automatically switches to the new Eastern calendar month. The original month stays on each pending transaction and is used during recovery, even after midnight or daylight-saving changes. Incoming Twitch message IDs are checked against **all monthly partitions**, so a retried message cannot spend again after rollover.
 
-Set up `16-month-rollover.cs` as a local timed action on the shared **Blocking** queue, ideally daily at **00:10 Eastern** (also run once when enabling it). It recomputes an idempotent `ci_wheel_archive_YYYY_MM` JSON snapshot for the previous month, containing **only approved, non-removed games** plus counts of pending and rejected submissions. It does **not** silently pick a winner or interact with the OBS overlay. The moderator can export the approved month with `tools/export-wheel.py` for their preferred spinning tool. For example: `python tools/export-wheel.py backup.json 2026-11` after exporting a fresh backup. The script also accepts a single monthly JSON array or the `ci_wheel_archive_YYYY_MM` JSON object exported separately. It refuses to generate a final spin CSV while pending submissions remain unless explicitly overridden with `--allow-pending`. If a late moderation decision changes an older month, manually re-run the archival action with `targetMonth=YYYY-MM`.
+Live spins and dashboard CSV exports use the monthly ledger. For a standalone CSV, run `python tools/export-wheel.py backup.json 2026-11` against a fresh private backup. The exporter blocks final export while submissions are unfinished or unreviewed unless you explicitly use `--allow-pending`. If you need a separate archive for another tool, run `16-month-rollover.cs` manually on the shared **Blocking** queue. It rebuilds the previous month by default and accepts `targetMonth=YYYY-MM` for another past month. Refresh it if a moderator changes that month later.
 
 Do not draw winners while an archive still reports pending games. Month-end exports should be backed up with other `ci_` globals.
 
@@ -88,7 +120,7 @@ Do not draw winners while an archive still reports pending games. Month-end expo
 
 Install **CI - Spin Wheel** from `17-wheel-spin.cs` with `!spinwheel` Starts With matching, restricted to Moderator/broadcaster. Install **CI - Wheel Reveal** from `18-wheel-reveal.cs` as a local timed action every approximately two seconds (in the Community Checkins Blocking queue, not a chat command). Add `overlay/game-wheel-overlay.html` to OBS as a second **Local File Browser Source**, **1920×1080**, above gameplay. Leave it enabled: transparent unless a spin is active. It does not modify the existing check-in overlay.
 
-`!spinwheel` loads the previous Eastern Time calendar month; `!spinwheel YYYY-MM` chooses another **past** month. It validates all entries, refuses to draw if any remain pending, uses `RandomNumberGenerator.GetInt32` to select a uniform random entry, **saves the result before animating**, and publishes the OBS state. Each approved submission has one equal chance. Once drawn, the month cannot be spun again accidentally. The wheel spins about **10 seconds**, reveals the saved winner for ~8 seconds, then hides. The separate timed reveal action posts the winning game in chat after the animation. No OBS animations or additional overlays appear at other times.
+`!spinwheel` loads the previous Eastern Time calendar month; `!spinwheel YYYY-MM` chooses another **past** month. It validates all entries, refuses to draw if any remain pending, uses cryptographic randomness to select a uniform random entry, **saves the result before animating**, and publishes the OBS state. Each approved submission has one equal chance. Once drawn, the month cannot be spun again accidentally. The wheel spins about **10 seconds**, reveals the saved winner for ~8 seconds, then hides. The separate timed reveal action posts the winning game in chat after the animation. No OBS animations or additional overlays appear at other times.
 
 `!spinwheel replay YYYY-MM` replays **the same winner** without charging credits or reannouncing in chat. `!spinwheel hide` hides immediately. Only the broadcaster can issue `!spinwheel reset YYYY-MM RESET-YYYY-MM` to clear the saved result and allow a new draw; the prior result and reset are retained in an audit trail. Take a backup before resetting.
 
@@ -165,7 +197,12 @@ Start it with a **verified, private** export JSON. The dashboard binds only to `
 
     python tools/admin-dashboard.py --backup "C:/Users/USER/Documents/vtuber-checkins-backups/checkins-YYYYMMDD-HHMMSS-fff.json"
 
-It lets you view check-in totals/credits and monthly wheel entries, stage total/streak edits, and approve/reject games. Its **Save staged JSON + SHA-256** operation creates a **new** snapshot under `.sandbox/staged/` while leaving the original unchanged. A new file is never applied automatically. To update production, first export/backup live Streamer.bot, manually inspect the staged changes, copy the staged JSON and checksum to the import action's expected `import.json` path, run import dry-run, then explicitly apply. Importing overwrites configured records and can conflict with changes made during the stream: do it only when the bot is stopped or Twitch submissions are disabled. Audit events are included with the staged backup. The dashboard is **not a live API connection** and is not a network-accessible moderator portal.
+The dashboard shows viewer counts, credit balances, game statuses and entry IDs.
+Use the CSV buttons to export a completed month. For corrections and game review,
+keep Streamer.bot running and connected to Twitch, and use `!checkinadmin` and
+`!wheeladmin` in the channel's chat while the stream is offline. Export a new
+backup and reopen the dashboard to view the updated records. Discard previous
+dashboard edit files and restage any needed changes through the commands.
 
 ## Diagnostics and reconciliation
 
@@ -236,6 +273,6 @@ Streamer.bot global-variable writes are independent. A journal helps recover
 interrupted wheel submissions, but cannot make cross-variable changes fully
 atomic. Audit history is month-partitioned JSON and begins only after this
 refactor; reconstructing pre-v5 streams requires existing aggregate counters.
-Monthly archives are **prepared for a separate spinning tool**; no winners are chosen by this project. The localhost dashboard operates on exported snapshots, not on live Streamer.bot state.
+Monthly archives are optional exports. Live spins use the current monthly ledger. The localhost dashboard operates on exported snapshots, not on live Streamer.bot state.
 The backup's user-variable inventory includes the known keys from this repo:
 custom per-user variables require explicitly extending the exporter/importer.

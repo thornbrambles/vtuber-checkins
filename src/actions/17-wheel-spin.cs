@@ -37,6 +37,7 @@ public class CPHInline
         public string spinId {get;set;}
         public string month {get;set;}
         public string drawnAtUtc {get;set;}
+        public long revealAtMs {get;set;}
         public int selectedIndex {get;set;}
         public int eligibleCount {get;set;}
         public Choice winner {get;set;}
@@ -142,7 +143,7 @@ public class CPHInline
                     result.selectedIndex >= result.choices.Count ||
                     result.choices[result.selectedIndex].id != result.winner.id)
                     throw new InvalidOperationException("Saved result is inconsistent.");
-                Publish(result, now, false);
+                Publish(result, now);
                 CPH.SendMessage("Replaying the " + month + " wheel result: " + result.winner.game +
                     " (" + result.winner.user + ").");
                 return true;
@@ -153,6 +154,23 @@ public class CPHInline
         {
             CPH.SendMessage("No saved wheel result for " + month + ".");
             return true;
+        }
+
+        // A submission may have reached its journal but not the month ledger.
+        try
+        {
+            foreach (var journal in CPH.GetTwitchUsersVar<string>("ci_wheel_pending_json", true))
+            {
+                if (String.IsNullOrWhiteSpace(journal.Value)) continue;
+                var pendingMonth = (string)JObject.Parse(journal.Value).SelectToken("entry.month");
+                if (String.IsNullOrWhiteSpace(pendingMonth) || pendingMonth == month)
+                    throw new InvalidOperationException("Recover pending game submissions before finalizing the wheel.");
+            }
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("Wheel finalization blocked: " + ex.Message);
+            return false;
         }
 
         // Always read the LIVE month ledger rather than a potentially stale
@@ -189,10 +207,10 @@ public class CPHInline
 
         // Cryptographically secure uniform draw. One *submission* = one slice,
         // even if a viewer owns multiple entries. Persist BEFORE presentation.
-        int winningIndex = RandomNumberGenerator.GetInt32(choices.Count);
+        int winningIndex = DrawIndex(choices.Count);
         var saved = new Result {
             spinId=Guid.NewGuid().ToString("N"), month=month,
-            drawnAtUtc=now.ToString("o"), eligibleCount=choices.Count,
+            drawnAtUtc=now.ToString("o"), revealAtMs=now.ToUnixTimeMilliseconds() + SpinDurationMs, eligibleCount=choices.Count,
             choices=choices, selectedIndex=winningIndex,
             winner=choices[winningIndex], actorId=actorId
         };
@@ -207,13 +225,13 @@ public class CPHInline
                 ". Do NOT reset/re-spin. Inspect " + resultKey);
             return false;
         }
-        Publish(saved, now, true);
+        Publish(saved, now);
         CPH.SendMessage($"🎡 Spinning the {month} game wheel! {choices.Count} entries.");
         CPH.LogInfo($"WHEEL DRAW month={month} spinId={saved.spinId} winnerId={saved.winner.id} game={saved.winner.game} user={saved.winner.user}");
         return true;
     }
 
-    private void Publish(Result result, DateTimeOffset now, bool announce)
+    private void Publish(Result result, DateTimeOffset now)
     {
         // Immutable outcome. UI only animates TO this selected index.
         var overlay = new {
@@ -221,7 +239,7 @@ public class CPHInline
             month=result.month, startedAtMs=now.ToUnixTimeMilliseconds(),
             durationMs=SpinDurationMs, visibleMs=OverlayLifetimeMs,
             selectedIndex=result.selectedIndex,
-            choices=result.choices, winner=result.winner, hidden=false, announce
+            choices=result.choices, winner=result.winner, hidden=false
         };
         CPH.SetGlobalVar("ci_wheel_spin_overlay_json", JsonConvert.SerializeObject(overlay), true);
     }
@@ -239,6 +257,22 @@ public class CPHInline
             operation, actorId, month, spinId, game
         }));
         CPH.SetGlobalVar("ci_wheel_spin_audit_json", audit.ToString(Formatting.None), true);
+    }
+
+    private static int DrawIndex(int count)
+    {
+        if (count <= 0) throw new ArgumentOutOfRangeException("count");
+        // Reject the incomplete tail so every slice has exactly the same probability.
+        ulong range = (ulong)UInt32.MaxValue + 1;
+        ulong limit = range - range % (uint)count;
+        var bytes = new byte[4];
+        using (var rng = RandomNumberGenerator.Create())
+        {
+            uint value;
+            do { rng.GetBytes(bytes); value = BitConverter.ToUInt32(bytes, 0); }
+            while ((ulong)value >= limit);
+            return (int)(value % (uint)count);
+        }
     }
 
     private static string ResultKey(string month) { return "ci_wheel_spin_result_" + month.Replace('-', '_'); }

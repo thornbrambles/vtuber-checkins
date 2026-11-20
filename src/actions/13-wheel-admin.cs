@@ -101,10 +101,7 @@ public class CPHInline
                 return true;
             }
             if(op=="approve") {
-                string normalized=Regex.Replace((item.game??"").Trim(),@"\s+"," ").ToLowerInvariant();
-                if(found.Any(x=>x!=item && !x.removed &&
-                    (String.IsNullOrWhiteSpace(x.status)||x.status=="approved") &&
-                    Regex.Replace((x.game??"").Trim(),@"\s+"," ").ToLowerInvariant()==normalized)) {
+                if(HasApprovedDuplicate(found, item, item.game)) {
                     CPH.SendMessage("That game is already approved. Reject this entry or choose another title.");
                     return true;
                 }
@@ -117,12 +114,21 @@ public class CPHInline
             if(title.Length<2 || title.Length>100 || title.Any(char.IsControl)) {
                 CPH.SendMessage("Game title must contain 2-100 characters.");return true;
             }
+            if (!item.removed && IsApproved(item) && HasApprovedDuplicate(found, item, title)) {
+                CPH.SendMessage("That game is already approved. Choose another title.");
+                return true;
+            }
             item.game=title;
         } else if(op=="remove") {
             item.removed=true;
             item.removedBy=actorId;
             item.removedAtUtc=DateTimeOffset.UtcNow.ToString("o");
         } else {
+            if (IsApproved(item) && String.IsNullOrWhiteSpace(item.replacedBy) &&
+                HasApprovedDuplicate(found, item, item.game)) {
+                CPH.SendMessage("That game is already approved. Rename this entry before restoring it.");
+                return true;
+            }
             item.removed=false;
             item.removedBy=null;
             item.removedAtUtc=null;
@@ -146,6 +152,14 @@ public class CPHInline
         else
             CPH.SendMessage($"Wheel entry {target}: {op} done. No credits refunded.");
         return true;
+    }
+    private static bool IsApproved(Entry entry) {
+        return String.IsNullOrWhiteSpace(entry.status) || entry.status == "approved";
+    }
+    private static bool HasApprovedDuplicate(List<Entry> entries, Entry item, string title) {
+        string normalized = Regex.Replace((title ?? "").Trim(), @"\s+", " ").ToLowerInvariant();
+        return entries.Any(x => x != item && !x.removed && String.IsNullOrWhiteSpace(x.replacedBy) &&
+            IsApproved(x) && Regex.Replace((x.game ?? "").Trim(), @"\s+", " ").ToLowerInvariant() == normalized);
     }
     private List<Entry> Load(string month) {
         string key="ci_wheel_month_"+month.Replace('-','_');

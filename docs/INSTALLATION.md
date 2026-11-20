@@ -1,5 +1,21 @@
 # Installation — VTuber Check-ins v5
 
+**Updating an existing v5 install:** Disable incoming check-in/game/admin triggers,
+export a fresh backup, and replace actions 01, 02, 05, 06, 08, 10, 11 and 12 together
+in the shared Blocking queue. The check-in action now saves
+`ci_checkin_pending_json` before counter updates and retains completed redemption
+IDs in `ci_checkin_receipts_month_YYYY_MM`. Do not delete these globals during
+cleanup. Replace action 13 for duplicate-safe rename/restore and action 17 for the
+.NET Framework-compatible wheel draw. Compile each updated action in Streamer.bot.
+Run diagnostics and the [acceptance checklist](STREAMERBOT-ACCEPTANCE.md) before
+enabling triggers. If a pending check-in is reported, follow the
+[recovery instructions](OPERATIONS.md#check-in-recovery-and-retry-receipts) first.
+Use the exact action name `CI - Start Stream` so a redemption can finish a saved
+stream transition before awarding attendance. Run updated action 08 manually after
+backing up and before enabling check-ins. It migrates the old redemption receipts
+even when the wheel is already migrated. Update the dashboard and import action
+together. Use Twitch moderator commands for edits and the importer for recovery.
+
 **Upgrading from deployed v3?** Begin with [V3-MIGRATION-BACKUP-DEBUG.md](V3-MIGRATION-BACKUP-DEBUG.md). You can migrate directly from v3; export existing state before changing actions.
 
 **Upgrading from v4?** Read [REFRACTOR.md](REFRACTOR.md) and run the one-time wheel migration **before installing the new v5 wheel scripts**. The original all-month wheel JSON must be migrated or old entries will not appear in monthly lists.
@@ -8,7 +24,7 @@
 
 **All commands and permissions:** [COMMANDS.md](COMMANDS.md).
 
-A local-only admin dashboard for private backup files is available at `tools/admin-dashboard.py`. It stages modifications into new importable JSON with checksums; it is **not directly connected to Streamer.bot**. Read [OPERATIONS.md](OPERATIONS.md) and [STREAMERBOT-ACCEPTANCE.md](STREAMERBOT-ACCEPTANCE.md) before using it.
+A local-only admin dashboard for private backup files is available at `tools/admin-dashboard.py`. It displays a read-only snapshot and exports approved games. With the bot connected, moderators can use `!checkinadmin` and `!wheeladmin` in the broadcaster’s Twitch chat even when the stream is offline. Read [OPERATIONS.md](OPERATIONS.md) and [STREAMERBOT-ACCEPTANCE.md](STREAMERBOT-ACCEPTANCE.md) before using it.
 
 This repository contains standalone Streamer.bot C# action bodies and an OBS HTML overlay. It is **not** an importable Streamer.bot package. Follow the steps in order. Back up Streamer.bot before changing an existing setup.
 

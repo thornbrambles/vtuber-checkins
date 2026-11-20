@@ -6,10 +6,22 @@ import json
 import re
 from pathlib import Path
 
+def entry_status(entry):
+    status = entry.get("status")
+    return "approved" if status is None or (isinstance(status, str) and not status.strip()) else status
+
+
 def eligible_entries(source, month, allow_pending=False):
     if isinstance(source, list):
         entries = source
     elif isinstance(source, dict) and source.get("format") == "vtuber-checkins-backup":
+        if not allow_pending:
+            for user in source.get("users", []):
+                raw = user["vars"].get("ci_wheel_pending_json")
+                if raw and raw.strip():
+                    pending_month = json.loads(raw).get("entry", {}).get("month")
+                    if not pending_month or pending_month == month:
+                        raise ValueError("Recover unfinished game submissions before exporting this month")
         stored = source["globals"].get("ci_wheel_month_" + month.replace("-", "_"))
         entries = json.loads(stored) if stored else []
     elif isinstance(source, dict) and source.get("month") == month and isinstance(source.get("eligible"), list):
@@ -24,7 +36,7 @@ def eligible_entries(source, month, allow_pending=False):
                                  and not e.get("removed") and not e.get("replacedBy") for e in entries):
         raise ValueError("Some game submissions are still pending approval")
     return [e for e in entries if e.get("month") == month and not e.get("removed")
-            and not e.get("replacedBy") and e.get("status", "approved") == "approved"]
+            and not e.get("replacedBy") and entry_status(e) == "approved"]
 
 def safe_field(value):
     text = str(value or "")

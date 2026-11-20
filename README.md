@@ -4,10 +4,17 @@ A Twitch Channel Points check-in system for Streamer.bot, with persistent lifeti
 
 ## Reliability and operations
 
+Check-ins use a pending recovery journal and permanent monthly redemption receipts
+to prevent lost credit awards and duplicate processing across streams. Update the
+related accounting actions together; see [recovery and tests](docs/OPERATIONS.md#check-in-recovery-and-retry-receipts).
+The C# checks target .NET Framework 4.8.1 and exercise actual action bodies with
+interrupted writes. Compile against your installed Streamer.bot assemblies and run
+the Twitch/OBS acceptance checklist before using the changes live.
+
 - [Operational runbook](docs/OPERATIONS.md): backups, dry-run restore, diagnostics, reconciliation, moderation, safe upgrades and production test gates
 - [Central configuration](config/checkins.json): authoritative milestones, reward interval and command registration intent
 - [Offline synthetic sandbox](tools/checkin-ops.py): simulated streams, game review and credits, separate from production Streamer.bot
-- [Local admin dashboard](tools/admin-dashboard.py): stage edits and approve/reject games from a private exported backup; generates importable snapshots, **never writes live**
+- [Local admin dashboard](tools/admin-dashboard.py): browse a private backup and export approved games. Moderators make updates in Twitch chat, including between broadcasts.
 - [Real Streamer.bot acceptance checklist](docs/STREAMERBOT-ACCEPTANCE.md): redemption, duplicate delivery, month rollover, moderator review and backup validation
 - [Full chat command reference](docs/COMMANDS.md): includes moderator `!wheeladmin` controls
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Compile each standalone CPHInline C# action independently against minimal test stubs.
 
-Requires dotnet SDK 8.0 and NuGet network access for Newtonsoft.Json.
+Requires dotnet SDK 8.0 and NuGet access for Newtonsoft.Json and Framework references.
+Targets Streamer.bot's .NET Framework 4.8.1 rather than the SDK's own runtime.
 This catches C# syntax/type errors but does NOT simulate Streamer.bot runtime.
 """
 import pathlib

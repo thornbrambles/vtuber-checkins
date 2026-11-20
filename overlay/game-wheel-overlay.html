@@ -112,7 +112,7 @@ function connect(){
     try{accept(typeof m.variable.value==="string"?JSON.parse(m.variable.value):m.variable.value)}
     catch(e){$("status").textContent="Wheel state error: "+e.message}
   };
-  socket.onclose=()=>{requestPending=false;hide();setTimeout(connect,3000)};
+  socket.onclose=()=>{requestPending=false;hide();lastEvent="";setTimeout(connect,3000)};
   socket.onerror=()=>{$("status").textContent="WebSocket error"};
 }
 setInterval(()=>{if(requestPending&&Date.now()-requestAt>2500)requestPending=false;poll()},650);

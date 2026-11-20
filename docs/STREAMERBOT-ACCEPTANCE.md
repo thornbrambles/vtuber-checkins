@@ -39,7 +39,8 @@ and never run destructive tests on the actual viewer records.
 | Replay | !spinwheel replay YYYY-MM | same winner and same selected slice; no new draw, no repeat winner chat message |
 | Duplicate spin | !spinwheel YYYY-MM again | refuses second draw until explicit broadcaster reset |
 | Hide and expire | !spinwheel hide; let a new test spin finish | wheel hides on demand or after ~18 seconds; existing check-in overlay remains unchanged |
-| Winner chat timing | Enable CI - Wheel Reveal local timer, spin once | winning game announced after animation, at most once per spin ID |
+| Winner chat timing | Enable CI - Wheel Reveal, spin once, then replay and hide before the timer fires | original winner is announced once at the original reveal time |
+| Off-stream administration | While the channel is offline and Streamer.bot is connected, run `!checkinadmin set @viewer 20` and `!wheeladmin approve ID` as a moderator with test data | both changes appear in a fresh backup, and a non-moderator cannot make either change |
 | Reset authorization | Non-broadcaster and broadcaster try !spinwheel reset YYYY-MM RESET-YYYY-MM | only broadcaster with exact confirmation can reset, with history retained |
 | Moderator auth | Non-mod sends !wheeladmin and !checkindiag | action refuses; moderator/broadcaster succeeds |
 | OBS unchanged | Check in after a test redemption | existing leaderboard/60-second behavior unchanged |

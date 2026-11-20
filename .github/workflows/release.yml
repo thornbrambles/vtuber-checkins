@@ -9,17 +9,18 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    uses: ./.github/workflows/credit-policy-tests.yml
+    permissions:
+      contents: read
   package:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify configuration and run tests
-        run: |
-          python tools/sync-config.py --check
-          python -m unittest discover -s tests -v
       - name: Package release
         run: python tools/package-release.py "$GITHUB_REF_NAME"
       - name: Publish GitHub release

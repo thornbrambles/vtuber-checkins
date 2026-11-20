@@ -29,11 +29,17 @@ public class CPHInline
         "ci_last_checkin_at_ms"
     };
     private static readonly HashSet<string> BoolGlobalKeys = new HashSet<string> {
-        "ci_wheel_legacy_migrated"
+        "ci_wheel_legacy_migrated", "ci_checkin_receipts_migrated"
     };
 
     public bool Execute()
     {
+        if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_checkin_pending_json", true)) ||
+            !String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_stream_start_pending_json", true)))
+        {
+            CPH.LogError("Recover the pending check-in or stream transition before changing accounting state.");
+            return false;
+        }
         string path = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "vtuber-checkins-backups", ImportFilename);
@@ -75,7 +81,7 @@ public class CPHInline
             !(root["globals"] is JObject) ||
             !(root["users"] is JArray))
         {
-            CPH.LogError("CHECKIN IMPORT: wrong format/version. Expected vtuber-checkins-backup schemaVersion 1.");
+            CPH.LogError("CHECKIN IMPORT: wrong format/version. Expected a check-in backup, schemaVersion 1.");
             return false;
         }
 

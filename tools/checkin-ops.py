@@ -24,6 +24,11 @@ import pathlib
 import re
 import sys
 from collections import Counter, defaultdict
+from importlib.util import module_from_spec, spec_from_file_location
+
+wheel_spec = spec_from_file_location("wheel_export", pathlib.Path(__file__).with_name("export-wheel.py"))
+wheel_export = module_from_spec(wheel_spec)
+wheel_spec.loader.exec_module(wheel_export)
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SCHEMA_VERSION = 1
@@ -36,7 +41,7 @@ USER_INTS = {
 USER_STRINGS = {"ci_badge", "ci_last_redemption_id", "ci_wheel_pending_json"}
 GLOBAL_INTS = {"ci_stream_id", "ci_stream_count", "ci_schema_version"}
 GLOBAL_LONGS = {"ci_last_checkin_at_ms"}
-GLOBAL_BOOLS = {"ci_wheel_legacy_migrated"}
+GLOBAL_BOOLS = {"ci_wheel_legacy_migrated", "ci_checkin_receipts_migrated"}
 MONTH_KEY = re.compile(r"ci_wheel_month_(\d{4})_(0[1-9]|1[0-2])$")
 VIEWER_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,30}$")
 
@@ -155,7 +160,7 @@ def reconcile(data):
     # records still consume one historical slot, not an extra credit.
     approved_titles = {}
     for entry in entries:
-        if entry.get("removed") or entry.get("replacedBy") or entry.get("status", "approved") != "approved":
+        if entry.get("removed") or entry.get("replacedBy") or wheel_export.entry_status(entry) != "approved":
             continue
         title = " ".join(str(entry.get("game", "")).split()).casefold()
         key = (entry.get("month"), title)
@@ -278,7 +283,7 @@ def sandbox_main(args):
                                  entry.get("status") == "rejected" and not entry.get("replacedBy")), None)
                 normalized = " ".join(args.title.split()).casefold()
                 if any(" ".join(entry["game"].split()).casefold() == normalized and
-                       entry.get("status", "approved") in ("approved", "pending") and
+                       wheel_export.entry_status(entry) in ("approved", "pending") and
                        not entry.get("removed") for entry in current):
                     raise CheckinError("Duplicate game title this month")
                 slots = {entry.get("slotId", entry["id"]) for entry in current if entry["user"] == name}

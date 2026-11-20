@@ -53,7 +53,8 @@ function harness() {
   vm.runInContext(match[1], context);
   const submit = data => { context.payload=data; vm.runInContext("accept(payload)",context); };
   const render = () => vm.runInContext("frame()",context);
-  return { node, submit, render, setNow: n => {currentTime=n;} };
+  return { close: () => vm.runInContext("socket.onclose()",context),
+    scheduled: () => vm.runInContext("raf !== null",context), node, submit, render, setNow: n => {currentTime=n;} };
 }
 
 function spin(index, n=8, overrides={}) {
@@ -104,4 +105,17 @@ test("invalid result cannot pick a different winner in UI",()=>{
   item.winner=item.choices[4];
   h.submit(item);
   assert.equal(h.node("stage").classList.contains("visible"),false);
+});
+
+test("reconnect resumes the same still-active spin", () => {
+  const h = harness();
+  const draw = spin(2);
+  h.submit(draw);
+  h.render();
+  h.close();
+  assert.equal(h.node("stage").classList.contains("visible"), false);
+  h.submit(draw);
+  assert.equal(h.scheduled(), true);
+  h.render();
+  assert.equal(h.node("winner").classList.contains("show"), true);
 });

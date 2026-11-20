@@ -22,6 +22,12 @@ public class CPHInline
 
     public bool Execute()
     {
+        if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_checkin_pending_json", true)) ||
+            !String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_stream_start_pending_json", true)))
+        {
+            CPH.LogError("Recover the pending check-in or stream transition before changing accounting state.");
+            return false;
+        }
         string actorId, actor;
         if (!CPH.TryGetArg("userId", out actorId) || String.IsNullOrWhiteSpace(actorId) ||
             !CPH.TryGetArg("userName", out actor) || String.IsNullOrWhiteSpace(actor))
