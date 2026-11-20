@@ -100,7 +100,7 @@ public class CPHInline
 
         string streakText = streak == 1 ? "a new streak started" : streak + "-stream streak";
         string welcome = total == 1 ? "Welcome to the Grove!" : "You're checked in!";
-        CPH.SendMessage($"✅ 🌿 @{userName} — {welcome} Check-in #{total} • {streakText} • {count} viewer(s) checked in today. Your next step: !checkins for your progress.");
+        CPH.SendMessage($"✅ 🌿 @{userName} — {welcome} Check-in #{total} • {streakText} • {count} viewer(s) checked in this stream. Your next step: !checkins for your progress.");
 
         if (unlocked != "")
             CPH.SendMessage($"🏆 Milestone unlocked! @{userName} earned the {unlocked} badge for {total} total check-ins!");
