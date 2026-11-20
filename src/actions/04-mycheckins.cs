@@ -44,7 +44,7 @@ public class CPHInline
         int wheelCredits = earnedCredits - usedCredits;
         string progress = next == 0 ? "all milestones earned" : (next - total) + " to next reward";
         CPH.SendMessage($"@{name}: {total} lifetime | {streak} stream streak | Rank {rank} | Badge: {badge} | " +
-            (checkedIn ? "checked in this stream" : "not checked in this stream") + $" | {progress} | Game submissions: {wheelCredits} (!game Title)");
+            (checkedIn ? "checked in this stream" : "not checked in this stream") + $" | {progress} | Game submissions: {wheelCredits} (!addgame Title)");
         return true;
     }
 }
