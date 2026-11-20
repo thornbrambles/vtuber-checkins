@@ -10,9 +10,9 @@ v4 calculated credits as `floor(current total / 10) - claimed`, and reset `claim
 2. `ci_wheel_claimed`: used credits; never clear during an admin reset.
 3. Available credits = `max(0, earned - claimed)`.
 4. New wheel entries go to a persisted global variable named `ci_wheel_month_YYYY_MM`. This contains a JSON array of entries for that month only.
-5. Preserve the old `ci_wheel_entries_json` archive unchanged and mark migration with `ci_wheel_legacy_migrated`. Both `!wheel` and `!game` refuse operations until the marker is set by migration.
+5. Preserve the old `ci_wheel_entries_json` archive unchanged and mark migration with `ci_wheel_legacy_migrated`. Both `!wheel` and `!addgame` refuse operations until the marker is set by migration.
 6. All actions and the one-time migration must run in the same **blocking action queue**.
-7. `!game` persists `ci_wheel_pending_json` on the viewer before applying the ledger and credit writes. Replaying an interrupted transaction is idempotent by entry ID, and repeated Twitch `msgId` events do not consume extra credits. Run `!game` with no game title to recover an interrupted entry.
+7. `!addgame` persists `ci_wheel_pending_json` on the viewer before applying the ledger and credit writes. Replaying an interrupted transaction is idempotent by entry ID, and repeated Twitch `msgId` events do not consume extra credits. Run `!addgame` with no game title to recover an interrupted entry.
 8. A Channel Points redemption also records `ci_reward_last_stream` and `ci_last_redemption_id`; admin resets cannot cause a second redemption during the same logical stream. The same event ID can be retried for fulfillment without refunding a recorded check-in.
 
 ### Reset example
@@ -27,14 +27,14 @@ v4 calculated credits as `floor(current total / 10) - claimed`, and reset `claim
 
 **Back up your Streamer.bot data first.** Do not replace v4 scripts or submit any new games until you migrate history. Existing v4 submissions must be imported into monthly keys or `!wheel list` won't show them.
 
-1. Temporarily **disable the `!game` chat command and its action trigger** so the legacy v4 game action cannot append entries while migration is taking place. This prevents a last-minute game submission from being written only to the old archive after the migration snapshot.
+1. Temporarily **disable the legacy `!game` chat command and its action trigger** so the legacy v4 game action cannot append entries while migration is taking place. This prevents a last-minute game submission from being written only to the old archive after the migration snapshot.
 2. Confirm the Community Checkins queue is **Blocking** and existing actions use it.
 3. Create the one-time action `CI - Migrate Legacy Wheel`; paste `src/actions/08-migrate-legacy-wheel.cs`.
 4. Assign it to Community Checkins and **do not add any Twitch/chat trigger**.
 5. Run it manually once. Check the Streamer.bot log for “Wheel migration complete” or “no legacy entries”.
 6. Verify monthly global variables `ci_wheel_month_YYYY_MM` were populated, that the old `ci_wheel_entries_json` still exists, and that `ci_wheel_legacy_migrated` is true.
-7. Replace the action bodies in **02, 04, 05, 06 and 07** with the updated files from this branch. Compile each. `!game` and `!wheel` will refuse operations if migration was not completed.
-8. Re-enable `!game` after compiling the new action. Keep the other actions, Twitch commands and OBS overlay unchanged. Test `!checkins`, `!wheel`, `!wheel list` and `!game` with a known test viewer.
+7. Replace the action bodies in **02, 04, 05, 06 and 07** with the updated files from this branch. Compile each. `!addgame` and `!wheel` will refuse operations if migration was not completed.
+8. Create or enable `!addgame` after compiling the new action. Leave the old `!game` command disabled. Keep the other actions, Twitch commands and OBS overlay unchanged. Test `!checkins`, `!wheel`, `!wheel list` and `!addgame` with a known test viewer.
 
 The migration is idempotent for entries with stable `id` values, but a failed or interrupted run must be investigated before trying again. The action does not delete the old global array.
 
