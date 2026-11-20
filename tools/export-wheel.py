@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export persisted ci_wheel_entries_json to CSV for a given calendar month.
+"""Export legacy or monthly wheel JSON to CSV for a given calendar month.
 Usage: python export-wheel.py wheel-entries.json 2026-11
 """
 import csv
@@ -20,6 +20,6 @@ with output.open("w", encoding="utf-8-sig", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=["game", "user", "date"])
     writer.writeheader()
     for entry in entries:
-        if entry.get("month") == month:
+        if entry.get("month") == month and not entry.get("removed", False):
             writer.writerow({k: entry.get(k, "") for k in ("game", "user", "date")})
 print(f"Exported {output}")
