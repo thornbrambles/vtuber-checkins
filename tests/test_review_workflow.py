@@ -59,7 +59,7 @@ class DashboardTests(unittest.TestCase):
         entries = json.loads(data["globals"]["ci_wheel_month_2026_11"])
         entries[0]["game"] = "  GAME   TWO "
         data["globals"]["ci_wheel_month_2026_11"] = json.dumps(entries)
-        with self.assertRaisesRegex(ops.CheckinError, "already approved"):
+        with self.assertRaisesRegex(dashboard.ops.CheckinError, "already approved"):
             dashboard.review_entry(data, "2026-11", "entry-1", "approved")
 
     def test_viewer_edit_preserves_earned_credits_and_audit(self):
