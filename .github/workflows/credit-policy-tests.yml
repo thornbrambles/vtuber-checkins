@@ -23,3 +23,16 @@ jobs:
         run: python tools/sync-config.py --check
       - name: Run policy, backup, reconciliation and sandbox tests
         run: python -m unittest discover -s tests -v
+
+  csharp-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile each C# action against documented API-shaped stubs
+        run: python tools/compile-actions.py
