@@ -60,6 +60,8 @@ Under Actions & Queues > Actions, create each action below, assigned to the Comm
 | CI - Diagnostics | src/actions/12-diagnostics.cs | Manual (no trigger; called by CI - Diagnostic Command) |
 | CI - Diagnostic Command | src/actions/15-diagnostic-command.cs | Core > Commands > Command Triggered (!checkindiag) |
 | CI - Month Rollover | src/actions/16-month-rollover.cs | Off-stream local timed trigger, daily at ~00:10 Eastern; no chat/Twitch trigger |
+| CI - Spin Wheel | src/actions/17-wheel-spin.cs | Core > Commands > Command Triggered (!spinwheel), mod/broadcaster only |
+| CI - Wheel Reveal | src/actions/18-wheel-reveal.cs | Local timed trigger every ~2 seconds; no chat/Twitch trigger |
 
 **Review flow:** New `!addgame Title` entries are **pending**, do not appear in `!wheel list`, and consume one credit/one of three monthly slots. Mods use `!wheeladmin list`, then `!wheeladmin approve ID` or `reject ID`. Rejected submissions can be replaced with another `!addgame Title` within the same calendar month without another credit or slot. Check [COMMANDS.md](COMMANDS.md).
 
@@ -81,6 +83,7 @@ In Commands, create and enable these exact names, selecting the intended action 
 | !addgame | Starts With / Basic | Everyone | Submit title after command |
 | !wheel | Starts With / Basic | Everyone | Credits or list subcommand |
 | !wheeladmin | Starts With / Basic | Moderator + broadcaster | Moderate wheel entries by ID |
+| !spinwheel | Starts With / Basic | Moderator + broadcaster | Spin, replay and hide the approved previous-month wheel |
 | !checkindiag | Exact / Basic | Moderator + broadcaster | Run diagnostics and summarize in chat |
 
 Command settings are independent from action trigger creation. For each command ensure the proper *Command Triggered* trigger exists on its corresponding action and points at the matching command.
@@ -128,6 +131,16 @@ In OBS Studio add a **Browser Source**, check **Local File** and point to overla
 The leaderboard starts invisible. After a **successful** check-in redemption, it fades in, stays visible for 60 seconds, then fades out. Another successful redemption restarts the minute. Duplicate redemptions, admin changes and chat-only requests do not restart the timer. Milestone toast notifications are separate.
 
 The overlay polls the persisted global variable ci_overlay_json using Streamer.bot's WebSocket GetGlobal request and uses ci_last_checkin_at_ms to determine its visibility deadline.
+
+### Separate on-demand game wheel in OBS
+
+Add a **second Browser Source** from `overlay/game-wheel-overlay.html` as a **Local File**, at **1920×1080**. Position it above gameplay in the source order. Leave the source enabled: its HTML starts transparent and remains invisible until `!spinwheel` runs. No changes are needed to `overlay/checkin-overlay.html`.
+
+Register `!spinwheel` (Starts With, **Moderator + broadcaster**) with **CI - Spin Wheel**. Add `src/actions/18-wheel-reveal.cs` as **CI - Wheel Reveal**, configured to run every approximately **2 seconds** using a **local timed trigger**, in the same Blocking queue. This posts the winning game to Twitch chat after the animation finishes. If you prefer an OBS-only reveal, omit the timed reveal trigger.
+
+Run `!spinwheel` to draw the **previous** Eastern calendar month; `!spinwheel 2026-10` selects an explicit past month. It refuses to run while entries are pending approval, saves its result **before** the 10-second animation, and will not select again for the same month. `!spinwheel replay 2026-10` replays the saved result without a new draw or chat announcement. `!spinwheel hide` immediately hides the wheel. Only the broadcaster can use `!spinwheel reset 2026-10 RESET-2026-10` to authorize a new draw; the prior draw remains in the audit log. **Reset is destructive to the current winner selection**, so take a backup first.
+
+The wheel is purposely limited to **past months** so entries cannot change during an ongoing monthly draw. Each approved submission is one equally weighted slice. The wheel hides automatically after approximately **18 seconds**, and the check-in overlay never changes.
 
 ## 8. Initialize and test
 
