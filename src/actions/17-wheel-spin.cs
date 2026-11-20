@@ -142,7 +142,7 @@ public class CPHInline
                     result.selectedIndex >= result.choices.Count ||
                     result.choices[result.selectedIndex].id != result.winner.id)
                     throw new InvalidOperationException("Saved result is inconsistent.");
-                Publish(result, now);
+                Publish(result, now, false);
                 CPH.SendMessage("Replaying the " + month + " wheel result: " + result.winner.game +
                     " (" + result.winner.user + ").");
                 return true;
@@ -207,13 +207,13 @@ public class CPHInline
                 ". Do NOT reset/re-spin. Inspect " + resultKey);
             return false;
         }
-        Publish(saved, now);
+        Publish(saved, now, true);
         CPH.SendMessage($"🎡 Spinning the {month} game wheel! {choices.Count} entries.");
         CPH.LogInfo($"WHEEL DRAW month={month} spinId={saved.spinId} winnerId={saved.winner.id} game={saved.winner.game} user={saved.winner.user}");
         return true;
     }
 
-    private void Publish(Result result, DateTimeOffset now)
+    private void Publish(Result result, DateTimeOffset now, bool announce)
     {
         // Immutable outcome. UI only animates TO this selected index.
         var overlay = new {
@@ -221,7 +221,7 @@ public class CPHInline
             month=result.month, startedAtMs=now.ToUnixTimeMilliseconds(),
             durationMs=SpinDurationMs, visibleMs=OverlayLifetimeMs,
             selectedIndex=result.selectedIndex,
-            choices=result.choices, winner=result.winner, hidden=false
+            choices=result.choices, winner=result.winner, hidden=false, announce
         };
         CPH.SetGlobalVar("ci_wheel_spin_overlay_json", JsonConvert.SerializeObject(overlay), true);
     }
