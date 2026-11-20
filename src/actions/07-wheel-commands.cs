@@ -93,7 +93,7 @@ public class CPHInline
             (String.IsNullOrWhiteSpace(e.status) || e.status == "approved")).ToList();
         if (entries.Count == 0)
         {
-            CPH.SendMessage("🎮 No games submitted to this month's wheel yet.");
+            CPH.SendMessage("🎮 No approved games on this month's wheel yet.");
             return true;
         }
         string prefix = $"🎮 {month} wheel ({entries.Count} entries): ";
