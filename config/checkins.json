@@ -3,7 +3,8 @@
   "reward": {
     "points": 1,
     "name": "🌿 Stream Check-in",
-    "creditsEvery": 10
+    "creditsEvery": 10,
+    "maxSubmissionsPerViewerPerMonth": 3
   },
   "milestones": [
     {
