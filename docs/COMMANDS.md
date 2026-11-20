@@ -53,6 +53,20 @@ The only admin command is `!checkinadmin`, with these subcommands. Configure **S
 
 All the admin edits are logged. Manually increasing totals can unlock additional lifetime wheel entitlements when crossing a new high-water milestone; decreasing and increasing back to previous totals won't issue extra entitlements.
 
+## Spinning the monthly game wheel
+
+`!spinwheel` (Starts With; Moderator/broadcaster only) loads the **previous** Eastern calendar month and starts a saved, randomized, one-winner animation in the separate OBS game-wheel Browser Source. It will **refuse** to draw if any game still needs approval. Each approved submission counts once. The result is permanently recorded until an explicit broadcaster-only reset; repeated spin requests do not pick a second winner.
+
+| Command | Effect |
+| --- | --- |
+| `!spinwheel` | Spin the previous month’s approved game submissions |
+| `!spinwheel 2026-10` | Spin the specified **past** month |
+| `!spinwheel replay 2026-10` | Replay the existing winner without a new selection or chat announcement |
+| `!spinwheel hide` | Hide the wheel immediately, without altering the draw |
+| `!spinwheel reset 2026-10 RESET-2026-10` | **Broadcaster only**: retain an audit event, clear the saved draw and allow a new spin |
+
+Install `17-wheel-spin.cs` as **CI - Spin Wheel** and `18-wheel-reveal.cs` as **CI - Wheel Reveal** with a local timed trigger every ~2 seconds. The latter posts the winning game after the animation, not before it. The wheel overlay is separate from check-in OBS graphics.
+
 ## Diagnostics command
 
 `!checkindiag` (Exact; Moderator/broadcaster only) runs the `CI - Diagnostics` read-only action inline and posts a short status summary in Twitch chat. Full findings are stored privately in `ci_diagnostics_json` and the Streamer.bot log. It is also usable when the bot is connected but the stream is offline.
@@ -71,6 +85,7 @@ All the admin edits are logged. Manually increasing totals can unlock additional
 | `!addgame` | Starts With | Everyone |
 | `!checkinadmin` | Starts With | Moderator + broadcaster |
 | `!wheeladmin` | Starts With | Moderator + broadcaster |
+| `!spinwheel` | Starts With | Moderator + broadcaster |
 | `!checkindiag` | Exact | Moderator + broadcaster |
 
 The source files implement the behavior, but they **do not provision the UI command registrations or triggers**.
@@ -80,6 +95,7 @@ The source files implement the behavior, but they **do not provision the UI comm
 - Shared stream state: `ci_stream_id`, `ci_stream_count`, etc. (persisted globals)
 - Each Twitch user: `ci_total`, `ci_streak`, `ci_last_stream`, `ci_badge`, `ci_wheel_earned`, `ci_wheel_claimed` (persisted user variables)
 - Monthly entries: `ci_wheel_month_YYYY_MM` (persisted JSON array per month)
+- Wheel draw result: `ci_wheel_spin_result_YYYY_MM`, animated state: `ci_wheel_spin_overlay_json`, audit: `ci_wheel_spin_audit_json`
 - Legacy wheel archive: `ci_wheel_entries_json` (read-only after migration)
 
 Each viewer can use at most **3 game picks per Eastern Time calendar month**. Unused earned credits carry over, and the monthly allowance resets with the new month. Removing or rejecting a submitted game does **not** reopen that month's slot or refund its credit. New submissions start **pending** and require moderator approval before appearing in `!wheel list` or the spin-ready archive. Rejected submissions remain replaceable at no extra cost within their original month. Duplicate titles in the same month are rejected (case-insensitive, collapsing whitespace). `!wheel` displays credits saved and monthly picks remaining.
