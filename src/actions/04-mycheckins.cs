@@ -4,7 +4,15 @@ using System.Linq;
 public class CPHInline
 {
     private static readonly int[] Thresholds = { 5, 10, 25, 50, 100, 250, 500 };
-    private static readonly string[] Badges = { "Sprout", "Sapling", "Grove Keeper", "Forest Friend", "Ancient Oak", "Woodland Guardian", "Legend of the Grove" };
+    private static readonly string[] Badges = {
+        "Sprout",
+        "Sapling",
+        "Grove Keeper",
+        "Forest Friend",
+        "Ancient Oak",
+        "Woodland Guardian",
+        "Legend of the Grove"
+    };
 
     public bool Execute()
     {
