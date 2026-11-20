@@ -22,8 +22,9 @@ public class CPHInline
     {
         if (CPH.GetGlobalVar<bool>("ci_wheel_legacy_migrated", true))
         {
+            InitializeCreditHighwater();
             CPH.SetGlobalVar("ci_schema_version", 5, true);
-            CPH.LogInfo("Wheel migration already completed; schema version set to 5.");
+            CPH.LogInfo("Wheel migration already completed; credit high-water verified, schema 5.");
             return true;
         }
 
