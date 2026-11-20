@@ -142,7 +142,7 @@ Run 14-reconcile.cs to compare counts of unique surviving game entries to
 earned/spent credit counters. Findings go into ci_reconciliation_json. Both
 actions are read-only except for saving their report variables.
 
-If a pending game submission exists, a viewer can run !game with no title to
+If a pending game submission exists, a viewer can run !addgame with no title to
 retry recovery. Do not manually zero pending records without matching the
 wheel entry and consumed credit first.
 
@@ -185,7 +185,7 @@ data or secrets belong in a release.
 3. Run the legacy wheel migration once in the shared BLOCKING queue.
 4. Compile each standalone C# action inside the exact Streamer.bot version used on stream.
 5. Test correct reward-trigger arguments and duplicate redemption refund/fulfillment behavior.
-6. Test !checkins, !checkinboard, !wheel, !game and !wheeladmin with correct permissions.
+6. Test !checkins, !checkinboard, !wheel, !addgame and !wheeladmin with correct permissions.
 7. Test crashes/recovery in a separate Streamer.bot instance; verify no duplicate wheel slots.
 8. Verify OBS WebSocket response and the 60-second timer.
 9. Run diagnostics/reconciliation, export another snapshot and store it off-machine.
