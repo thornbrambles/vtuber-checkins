@@ -34,8 +34,8 @@ If cancellation fails, the viewer is asked to contact a moderator instead of bei
 | `!checkinboard` | Everyone | `03-leaderboard.cs` | Top five viewers by lifetime check-ins; chat message only |
 | `!wheel` | Everyone | `07-wheel-commands.cs` | Earned/used/available game submission credits |
 | `!wheel credits` | Everyone | `07-wheel-commands.cs` | Same as `!wheel` |
-| `!wheel list` | Everyone | `07-wheel-commands.cs` | Up to five current-month game entries with game, user, date and total entry count |
-| `!addgame Stardew Valley` | Everyone | `06-game-submit.cs` | Submit a game using one earned credit, up to **3 submissions per viewer each calendar month** |
+| `!wheel list` | Everyone | `07-wheel-commands.cs` | Up to five **approved** current-month games; pending/rejected entries are hidden |
+| `!addgame Stardew Valley` | Everyone | `06-game-submit.cs` | Submit a title for moderator approval, using one earned credit and one of 3 monthly slots; replace a rejected title without another credit |
 | `!addgame` (no title) | Everyone | `06-game-submit.cs` | Recover an interrupted previous submission, if any; otherwise display usage |
 
 ## Moderator and broadcaster commands
@@ -59,7 +59,7 @@ All the admin edits are logged. Manually increasing totals can unlock additional
 
 ## Wheel moderator commands
 
-`!wheeladmin` (Starts With; Moderator/broadcaster only) is implemented by `13-wheel-admin.cs`. Subcommands: `!wheeladmin list [YYYY-MM]`, `!wheeladmin rename ENTRY_ID New Title`, `!wheeladmin remove ENTRY_ID`, `!wheeladmin restore ENTRY_ID`. Removals are soft-deletes and do not refund credits. All edit operations are recorded in `ci_wheel_audit_json`.
+`!wheeladmin` (Starts With; Moderator/broadcaster only) is implemented by `13-wheel-admin.cs`. Subcommands: `!wheeladmin list [YYYY-MM]`, **`!wheeladmin approve ENTRY_ID`**, **`!wheeladmin reject ENTRY_ID`**, `!wheeladmin rename ENTRY_ID New Title`, `!wheeladmin remove ENTRY_ID`, `!wheeladmin restore ENTRY_ID`. A rejected game can be replaced during the **same calendar month** with another `!addgame Title` without a new credit or monthly slot. Removals are soft-deletes and do not refund credits. All edits are recorded in `ci_wheel_audit_json`.
 
 ## Access and matching settings
 
@@ -82,7 +82,7 @@ The source files implement the behavior, but they **do not provision the UI comm
 - Monthly entries: `ci_wheel_month_YYYY_MM` (persisted JSON array per month)
 - Legacy wheel archive: `ci_wheel_entries_json` (read-only after migration)
 
-Each viewer can use at most **3 game picks per Eastern Time calendar month**. Unused earned credits carry over, and the monthly allowance resets with the new month. Removing a submitted game does **not** reopen that month's slot or refund its credit. `!wheel` displays credits saved and monthly picks remaining.
+Each viewer can use at most **3 game picks per Eastern Time calendar month**. Unused earned credits carry over, and the monthly allowance resets with the new month. Removing or rejecting a submitted game does **not** reopen that month's slot or refund its credit. New submissions start **pending** and require moderator approval before appearing in `!wheel list` or the spin-ready archive. Rejected submissions remain replaceable at no extra cost within their original month. Duplicate titles in the same month are rejected (case-insensitive, collapsing whitespace). `!wheel` displays credits saved and monthly picks remaining.
 
 Available credits = `max(0, ci_wheel_earned - ci_wheel_claimed)`. Pending submissions are saved per user as `ci_wheel_pending_json` for crash recovery. Run the one-time migration action before the new wheel commands are enabled. `ci_wheel_earned` is the highest number of ten-check-in entitlements ever earned and never decreases. Historical redemptions never become available again after an admin reset.
 
