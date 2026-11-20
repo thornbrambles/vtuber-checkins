@@ -47,6 +47,10 @@ def run(check=False):
     monthly_limit = cfg["reward"].get("maxSubmissionsPerViewerPerMonth")
     if type(monthly_limit) is not int or monthly_limit != 3:
         raise ValueError("C# game submission limit currently assumes 3 per viewer each month")
+    if cfg["reward"].get("approvalRequired") is not True or cfg["reward"].get("rejectedGameReplacementCost") != 0:
+        raise ValueError("C# review policy expects moderation and zero-cost replacements")
+    if cfg["reward"].get("rejectReleasesMonthlySlot") is not False:
+        raise ValueError("Rejected slots must stay reserved for replacements")
     for name in ("06-game-submit.cs", "07-wheel-commands.cs"):
         action = (ROOT / "src/actions" / name).read_text(encoding="utf-8")
         if "private const int MonthlyLimit = 3;" not in action:
