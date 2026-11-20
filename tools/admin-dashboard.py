@@ -128,10 +128,13 @@ def export_snapshot(data, original, output_dir):
     return dest
 
 
-def page(data, token, notice):
-    from html import escape
+def page(data, token, notice, query=""):
     viewer_rows = []
-    for u in sorted(data["users"], key=lambda x: (x.get("userName") or "").lower())[:500]:
+    normalized = query.strip().casefold()
+    matched = [user for user in data["users"]
+               if not normalized or normalized in str(user.get("userName", "")).casefold()
+               or normalized in str(user["userId"])]
+    for u in sorted(matched, key=lambda x: (x.get("userName") or "").lower())[:500]:
         v = u["vars"]
         uid = e(u["userId"])
         viewer_rows.append(
@@ -169,6 +172,12 @@ def page(data, token, notice):
     report = ops.reconcile(data)
     html_rows = "\n".join(viewer_rows)
     games_html = "\n".join(game_rows)
+    search_form = (
+        "<form method='get' action='/'>"
+        "<input type='hidden' name='token' value='" + e(token) + "'>"
+        "<input name='q' placeholder='Search viewer' style='width:240px' value='" + e(query) + "'>"
+        "<button>Search</button></form>"
+    )
     return """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Check-in Admin · Offline</title>
@@ -191,7 +200,7 @@ article{background:white;border:1px solid #d5dfd5;border-radius:8px;padding:14px
 <form action="/save" method="post">
 <input type="hidden" name="token" value='""" + e(token) + """'>
 <button>Save staged JSON + SHA-256</button></form></article>
-<h2>Viewer records</h2><table><thead><tr><th>Viewer</th><th>Total · Streak</th><th>Credits</th></tr></thead><tbody>""" + html_rows + """</tbody></table>
+<h2>Viewer records</h2>""" + search_form + """<table><thead><tr><th>Viewer</th><th>Total · Streak</th><th>Credits</th></tr></thead><tbody>""" + html_rows + """</tbody></table>
 <h2>Game submissions</h2><table><thead><tr><th>Month</th><th>Game</th><th>Viewer</th><th>Status</th><th>Review</th></tr></thead><tbody>""" + games_html + """</tbody></table>
 <p><small>Local snapshot management only. Keep these exports private.</small></p></body></html>"""
 
@@ -219,7 +228,8 @@ def serve(snapshot, output_dir, port):
             if url.path != "/" or not secrets.compare_digest(provided, token):
                 self.respond(403, "Access denied", "text/plain")
                 return
-            self.respond(200, page(data, token, "No changes are applied to the live bot."))
+            self.respond(200, page(data, token, "No changes are applied to the live bot.",
+                                   parse_qs(url.query).get("q", [""])[0][:100]))
 
         def do_POST(self):
             origin = self.headers.get("Origin", "")
