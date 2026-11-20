@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 public class CPHInline
 {
@@ -141,8 +142,29 @@ public class CPHInline
         int earned = Math.Max(0, CPH.GetTwitchUserVarById<int>(userId, "ci_wheel_earned", true));
         CPH.SetTwitchUserVarById(userId, "ci_wheel_earned", Math.Max(earned, pending.earnedAtSubmission), true);
         CPH.SetTwitchUserVarById(userId, "ci_wheel_claimed", Math.Max(spent, pending.spentBefore + 1), true);
+        AppendAudit(pending.entry);
         CPH.UnsetTwitchUserVarById(userId, "ci_wheel_pending_json", true);
         return true;
+    }
+
+
+    private void AppendAudit(WheelEntry entry)
+    {
+        try
+        {
+            string key = "ci_events_month_" + DateTimeOffset.UtcNow.ToString("yyyy_MM");
+            string raw = CPH.GetGlobalVar<string>(key, true);
+            var events = String.IsNullOrWhiteSpace(raw) ? new JArray() : JArray.Parse(raw);
+            string id = "game-" + entry.id;
+            if (events.OfType<JObject>().Any(x => (string)x["id"] == id)) return;
+            events.Add(JObject.FromObject(new {
+                id,type="GAME_SUBMISSION",atUtc=DateTimeOffset.UtcNow.ToString("o"),
+                userId=entry.userId,userName=entry.user,entryId=entry.id,
+                game=entry.game,month=entry.month
+            }));
+            CPH.SetGlobalVar(key,events.ToString(Formatting.None),true);
+        }
+        catch(Exception ex) { CPH.LogError("WHEEL AUDIT FAILED: " + ex.Message); }
     }
 
     private static DateTimeOffset EasternTime(DateTimeOffset utc)
