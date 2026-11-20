@@ -20,7 +20,7 @@ The **🌿 Stream Check-in** Channel Points redemption is separate from chat com
 | --- | --- |
 | Successful check-in | `🌿 @viewer checked in! 12 total check-ins, a 4-stream streak, and 8 people checked in this stream.` |
 | Badge earned | `🏆 @viewer got the Sapling badge!` |
-| Wheel credit earned | `🎮 @viewer earned a game pick! 1 left. Use !game <title>.` |
+| Wheel credit earned | `🎮 @viewer earned a game pick! 1 left. Use !addgame <title>.` |
 | Duplicate redemption | `@viewer, you're already checked in! Your points were refunded.` |
 | Stream not initialized | `@viewer, check-ins aren't open yet. Your points were refunded.` |
 
@@ -35,8 +35,8 @@ If cancellation fails, the viewer is asked to contact a moderator instead of bei
 | `!wheel` | Everyone | `07-wheel-commands.cs` | Earned/used/available game submission credits |
 | `!wheel credits` | Everyone | `07-wheel-commands.cs` | Same as `!wheel` |
 | `!wheel list` | Everyone | `07-wheel-commands.cs` | Up to five current-month game entries with game, user, date and total entry count |
-| `!game Stardew Valley` | Everyone | `06-game-submit.cs` | Spend one available credit; save the game, username, Twitch user ID, date, month and entry ID in the current month's persisted ledger |
-| `!game` (no title) | Everyone | `06-game-submit.cs` | Recover an interrupted previous submission, if any; otherwise display usage |
+| `!addgame Stardew Valley` | Everyone | `06-game-submit.cs` | Spend one available credit; save the game, username, Twitch user ID, date, month and entry ID in the current month's persisted ledger |
+| `!addgame` (no title) | Everyone | `06-game-submit.cs` | Recover an interrupted previous submission, if any; otherwise display usage |
 
 ## Moderator and broadcaster commands
 
@@ -68,7 +68,7 @@ All the admin edits are logged. Manually increasing totals can unlock additional
 | `!checkins` | Exact | Everyone |
 | `!checkinboard` | Exact | Everyone |
 | `!wheel` | Starts With | Everyone |
-| `!game` | Starts With | Everyone |
+| `!addgame` | Starts With | Everyone |
 | `!checkinadmin` | Starts With | Moderator + broadcaster |
 | `!wheeladmin` | Starts With | Moderator + broadcaster |
 | `!checkindiag` | Exact | Moderator + broadcaster |
