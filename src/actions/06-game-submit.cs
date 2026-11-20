@@ -46,7 +46,7 @@ public class CPHInline
 
         if (game.Length < 2 || game.Length > 100 || game.Any(char.IsControl))
         {
-            CPH.SendMessage($"@{name}, use !game Game Title (2-100 characters). Example: !game Stardew Valley");
+            CPH.SendMessage($"@{name}, use !addgame Game Title (2-100 characters). Example: !addgame Stardew Valley");
             return true;
         }
 
@@ -78,7 +78,7 @@ public class CPHInline
                     : JsonConvert.DeserializeObject<List<WheelEntry>>(existingJson) ?? new List<WheelEntry>();
                 if (existing.Any(x => x != null && x.id == entryId))
                 {
-                    CPH.LogInfo("Ignoring duplicate !game event " + msgId);
+                    CPH.LogInfo("Ignoring duplicate !addgame event " + msgId);
                     return true;
                 }
             }
