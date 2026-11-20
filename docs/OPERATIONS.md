@@ -26,7 +26,11 @@ not have access to the Streamer.bot process; they operate on exported JSON files
 - ci_wheel_legacy_migrated — migration completion flag
 - ci_wheel_entries_json — legacy archive (read only after migration)
 - ci_wheel_month_YYYY_MM — JSON arrays of game submissions (including soft-deleted entries); these enforce the **three submissions per viewer per Eastern Time calendar month** limit
-- ci_wheel_audit_json — wheel moderator edits (rename/remove/restore)
+- ci_wheel_audit_json — wheel moderator edits (approve/reject/rename/remove/restore)
+- ci_wheel_spin_result_YYYY_MM — authoritative saved result for each drawn month (persisted, immutable until broadcaster reset)
+- ci_wheel_spin_overlay_json — transient OBS wheel presentation data; expires after ~18 seconds
+- ci_wheel_spin_audit_json — draw/reset history
+- ci_wheel_spin_last_announced_id — guard against duplicate winner chat announcements
 - ci_events_month_YYYY_MM — check-in/admin/game event audit history (new events only)
 - ci_diagnostics_json, ci_reconciliation_json — last machine-readable health reports
 
@@ -51,6 +55,8 @@ maintenance actions should also be assigned to this queue.
 | 14-reconcile.cs | Manual OR private local timed event | Read-only ledger-versus-credit report |
 | 15-diagnostic-command.cs | Twitch command: !checkindiag | Restricted moderator diagnostic chat summary |
 | 16-month-rollover.cs | Local timed trigger (e.g. daily 00:10 Eastern) | Safely regenerate prior-month approved wheel archive, with pending/rejected counts |
+| 17-wheel-spin.cs | Moderator/broadcaster command: !spinwheel | Secure one-time draw and publish animation state for a past month |
+| 18-wheel-reveal.cs | Private local timed trigger every ~2 seconds | At-most-once Twitch chat announcement after the 10-second animation |
 
 Do not attach a Twitch chat trigger to any backup, restore, migration, debug,
 diagnostic, or reconciliation action. A timed event is appropriate only for
@@ -77,6 +83,18 @@ On the 1st of the month, the date-scoped ledger automatically switches to the ne
 Set up `16-month-rollover.cs` as a local timed action on the shared **Blocking** queue, ideally daily at **00:10 Eastern** (also run once when enabling it). It recomputes an idempotent `ci_wheel_archive_YYYY_MM` JSON snapshot for the previous month, containing **only approved, non-removed games** plus counts of pending and rejected submissions. It does **not** silently pick a winner or interact with the OBS overlay. The moderator can export the approved month with `tools/export-wheel.py` for their preferred spinning tool. For example: `python tools/export-wheel.py backup.json 2026-11` after exporting a fresh backup. The script also accepts a single monthly JSON array or the `ci_wheel_archive_YYYY_MM` JSON object exported separately. It refuses to generate a final spin CSV while pending submissions remain unless explicitly overridden with `--allow-pending`. If a late moderation decision changes an older month, manually re-run the archival action with `targetMonth=YYYY-MM`.
 
 Do not draw winners while an archive still reports pending games. Month-end exports should be backed up with other `ci_` globals.
+
+## Live monthly wheel drawing (separate OBS overlay)
+
+Install **CI - Spin Wheel** from `17-wheel-spin.cs` with `!spinwheel` Starts With matching, restricted to Moderator/broadcaster. Install **CI - Wheel Reveal** from `18-wheel-reveal.cs` as a local timed action every approximately two seconds (in the Community Checkins Blocking queue, not a chat command). Add `overlay/game-wheel-overlay.html` to OBS as a second **Local File Browser Source**, **1920×1080**, above gameplay. Leave it enabled: transparent unless a spin is active. It does not modify the existing check-in overlay.
+
+`!spinwheel` loads the previous Eastern Time calendar month; `!spinwheel YYYY-MM` chooses another **past** month. It validates all entries, refuses to draw if any remain pending, uses `RandomNumberGenerator.GetInt32` to select a uniform random entry, **saves the result before animating**, and publishes the OBS state. Each approved submission has one equal chance. Once drawn, the month cannot be spun again accidentally. The wheel spins about **10 seconds**, reveals the saved winner for ~8 seconds, then hides. The separate timed reveal action posts the winning game in chat after the animation. No OBS animations or additional overlays appear at other times.
+
+`!spinwheel replay YYYY-MM` replays **the same winner** without charging credits or reannouncing in chat. `!spinwheel hide` hides immediately. Only the broadcaster can issue `!spinwheel reset YYYY-MM RESET-YYYY-MM` to clear the saved result and allow a new draw; the prior result and reset are retained in an audit trail. Take a backup before resetting.
+
+The overlay reads `ci_wheel_spin_overlay_json` using the same localhost Streamer.bot WebSocket endpoint as the existing check-in overlay. Do not expose unauthenticated WebSocket control over the network. This spin action is not tied to viewers spending credits; the wheel consumes only approved submissions already recorded in the monthly ledger.
+
+**Testing:** JavaScript geometry, hidden/expiry behavior and valid saved results are checked through the Node test runner in GitHub Actions. Stubbed C# compilation covers the action scripts. A live Streamer.bot + OBS acceptance test is still required; see [STREAMERBOT-ACCEPTANCE.md](STREAMERBOT-ACCEPTANCE.md).
 
 ## Backups
 
@@ -209,6 +227,7 @@ data or secrets belong in a release.
 7. Test crashes/recovery in a separate Streamer.bot instance; verify no duplicate wheel slots.
 8. Verify OBS WebSocket response and the 60-second timer.
 9. Run diagnostics/reconciliation, export another snapshot and store it off-machine.
+   Test a separate OBS wheel source with one past-month approved fixture, replay (same winner), hide, winner announcement and broadcaster-only reset; verify no effects on check-in graphics.
 10. Only then merge/deploy and enable Channel Points redemption for viewers.
 
 ## Known limitations
