@@ -54,6 +54,9 @@ Under Actions & Queues > Actions, create each action below, assigned to the Comm
 | CI - Admin Check-ins | src/actions/05-admin-checkins.cs | Core > Commands > Command Triggered (!checkinadmin) |
 | CI - Game Submit | src/actions/06-game-submit.cs | Core > Commands > Command Triggered (!game) |
 | CI - Wheel Commands | src/actions/07-wheel-commands.cs | Core > Commands > Command Triggered (!wheel) |
+| CI - Wheel Admin | src/actions/13-wheel-admin.cs | Core > Commands > Command Triggered (!wheeladmin) |
+| CI - Diagnostics | src/actions/12-diagnostics.cs | Manual (no trigger; called by CI - Diagnostic Command) |
+| CI - Diagnostic Command | src/actions/15-diagnostic-command.cs | Core > Commands > Command Triggered (!checkindiag) |
 
 Trigger names/locations vary with Streamer.bot version. Use the corresponding Twitch stream-online, reward-redemption and command-trigger events if menu labels differ.
 
@@ -70,8 +73,12 @@ In Commands, create and enable these exact names, selecting the intended action 
 | !checkinadmin | Starts With / Basic | Moderator + broadcaster | Inspect/edit/reset someone else's values |
 | !game | Starts With / Basic | Everyone | Submit title after command |
 | !wheel | Starts With / Basic | Everyone | Credits or list subcommand |
+| !wheeladmin | Starts With / Basic | Moderator + broadcaster | Moderate wheel entries by ID |
+| !checkindiag | Exact / Basic | Moderator + broadcaster | Run diagnostics and summarize in chat |
 
 Command settings are independent from action trigger creation. For each command ensure the proper *Command Triggered* trigger exists on its corresponding action and points at the matching command.
+
+**Permissions:** Restrict !wheeladmin and !checkindiag to moderators/broadcaster too. `CI - Diagnostics` must use exactly this action name so `!checkindiag` can invoke it.
 
 **Permissions:** Restrict !checkinadmin to Twitch moderators and the broadcaster in the command's permissions editor. The C# action also rejects actors who are not broadcaster or moderator. Do not leave an empty allow-list if your version treats that as Everyone.
 
@@ -142,7 +149,7 @@ Output: wheel-2026-11.csv with **game, user, date** columns. The exporter does n
 
 ## 10. Upgrading from earlier versions
 
-Back up everything first. **If upgrading from v4, run `src/actions/08-migrate-legacy-wheel.cs` manually in your blocking queue before replacing the wheel actions.** Read [REFRACTOR.md](REFRACTOR.md). Preserve existing persisted ci_* user/global variables. Replace your existing action bodies with the matching numbered source files, keeping the blocking queue. The v4 additions were CI - Game Submit and CI - Wheel Commands, plus the two chat commands !game and !wheel. The v5 refactor adds monthly storage and the one-time migration action. **New !game and !wheel actions refuse submissions/queries until `ci_wheel_legacy_migrated` is true.** If upgrading from a chat-command check-in version, remove the old !checkin trigger and connect CI - Viewer Check-in to the specific Twitch Channel Points redemption instead.
+Back up everything first. **If upgrading from v4, run `src/actions/08-migrate-legacy-wheel.cs` manually in your blocking queue before replacing the wheel actions.** Read [REFRACTOR.md](REFRACTOR.md). Preserve existing persisted ci_* user/global variables. Replace your existing action bodies with the matching numbered source files, keeping the blocking queue. The v4 additions were CI - Game Submit and CI - Wheel Commands, plus the two chat commands !game and !wheel. The v5 refactor adds monthly storage and the one-time migration action. See [OPERATIONS.md](OPERATIONS.md) for scheduled backups, audit history, sandbox, reconciliation and CI release workflow. **New !game and !wheel actions refuse submissions/queries until `ci_wheel_legacy_migrated` is true.** If upgrading from a chat-command check-in version, remove the old !checkin trigger and connect CI - Viewer Check-in to the specific Twitch Channel Points redemption instead.
 
 The overlay file is replaced independently in OBS; refresh its Browser Source afterward. Do not erase Streamer.bot's persisted user variables just to install the source code.
 
