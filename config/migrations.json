@@ -1,0 +1,30 @@
+{
+  "targetSchema": 5,
+  "migrations": [
+    {
+      "from": 3,
+      "to": 5,
+      "id": "v3-to-v5",
+      "description": "Preserve ci_* user and globals, initialize wheel high-water credits, mark empty or convert legacy wheel data",
+      "action": "src/actions/08-migrate-legacy-wheel.cs",
+      "requiresBackup": true,
+      "manualOnly": true
+    },
+    {
+      "from": 4,
+      "to": 5,
+      "id": "v4-to-v5",
+      "description": "Partition ci_wheel_entries_json into monthly ledgers and repair spent-credit baseline",
+      "action": "src/actions/08-migrate-legacy-wheel.cs",
+      "requiresBackup": true,
+      "manualOnly": true
+    }
+  ],
+  "constraints": [
+    "Backup JSON is a separate export schemaVersion 1, not ci_schema_version.",
+    "Do not run migration while the legacy !game command can write submissions.",
+    "Do not import a backup into the same populated Streamer.bot instance.",
+    "Inspect migration log, then set ci_schema_version to 5.",
+    "The migration cannot recover missing historical check-in maxima."
+  ]
+}
