@@ -50,6 +50,7 @@ maintenance actions should also be assigned to this queue.
 | 13-wheel-admin.cs | Twitch command: !wheeladmin | Mod/broadcaster rename/remove/restore wheel entries; audit logging |
 | 14-reconcile.cs | Manual OR private local timed event | Read-only ledger-versus-credit report |
 | 15-diagnostic-command.cs | Twitch command: !checkindiag | Restricted moderator diagnostic chat summary |
+| 16-month-rollover.cs | Local timed trigger (e.g. daily 00:10 Eastern) | Safely regenerate prior-month approved wheel archive, with pending/rejected counts |
 
 Do not attach a Twitch chat trigger to any backup, restore, migration, debug,
 diagnostic, or reconciliation action. A timed event is appropriate only for
@@ -60,12 +61,22 @@ allowed groups Moderator/broadcaster only. The action also verifies caller
 authority. Available subcommands:
 
 - !wheeladmin list [YYYY-MM] — up to three IDs in chat, all IDs in local log
+- !wheeladmin approve ID — approve a pending submission for the visible wheel
+- !wheeladmin reject ID — reject a game; the viewer can submit a replacement in the same month without another credit
 - !wheeladmin rename ID New Game Name — edit a game title without spending another credit
 - !wheeladmin remove ID — soft-delete from public wheel; preserve historical entry and spent credit
 - !wheeladmin restore ID — restore a soft-deleted entry to current wheel
 
-Soft-deleted entries still count toward the three-per-month limit; unused credits carry forward. This intentionally does **not** refund credits for game removals. Refunds need
+Submitted games start pending and are hidden from `!wheel list` and the spin-ready archive until approved. Case-insensitive, whitespace-normalized duplicate titles are blocked. Soft-deleted and rejected slots still count toward the three-per-month limit; a rejected game may be replaced during the **same calendar month** without using another credit, and replacement records share the original slot ID. Unused credits carry forward. This intentionally does **not** refund credits for game removals. Refunds need
 a separately audited administrative policy.
+
+## Month rollover and wheel archival
+
+On the 1st of the month, the date-scoped ledger automatically switches to the new Eastern calendar month. The original month stays on each pending transaction and is used during recovery, even after midnight or daylight-saving changes. Incoming Twitch message IDs are checked against **all monthly partitions**, so a retried message cannot spend again after rollover.
+
+Set up `16-month-rollover.cs` as a local timed action on the shared **Blocking** queue, ideally daily at **00:10 Eastern** (also run once when enabling it). It recomputes an idempotent `ci_wheel_archive_YYYY_MM` JSON snapshot for the previous month, containing **only approved, non-removed games** plus counts of pending and rejected submissions. It does **not** silently pick a winner or interact with the OBS overlay. The moderator can export the approved month with `tools/export-wheel.py` for their preferred spinning tool. If a late moderation decision changes an older month, manually re-run the archival action with `targetMonth=YYYY-MM`.
+
+Do not draw winners while an archive still reports pending games. Month-end exports should be backed up with other `ci_` globals.
 
 ## Backups
 
@@ -130,6 +141,14 @@ installation with a separate state directory and test Twitch bot/account.
 Copy only sanitized fixture values. The Python sandbox is a rules model, not
 an emulator of Streamer.bot's C# runtime and OAuth/OBS integrations.
 
+## Local admin dashboard
+
+Start it with a **verified, private** export JSON. The dashboard binds only to `127.0.0.1` and prints a random access-token URL:
+
+    python tools/admin-dashboard.py --backup "C:/Users/USER/Documents/vtuber-checkins-backups/checkins-YYYYMMDD-HHMMSS-fff.json"
+
+It lets you view check-in totals/credits and monthly wheel entries, stage total/streak edits, and approve/reject games. Its **Save staged JSON + SHA-256** operation creates a **new** snapshot under `.sandbox/staged/` while leaving the original unchanged. A new file is never applied automatically. To update production, first export/backup live Streamer.bot, manually inspect the staged changes, copy the staged JSON and checksum to the import action's expected `import.json` path, run import dry-run, then explicitly apply. Importing overwrites configured records and can conflict with changes made during the stream: do it only when the bot is stopped or Twitch submissions are disabled. Audit events are included with the staged backup. The dashboard is **not a live API connection** and is not a network-accessible moderator portal.
+
 ## Diagnostics and reconciliation
 
 Run 12-diagnostics.cs manually (or schedule read-only checks) when stream
@@ -185,7 +204,8 @@ data or secrets belong in a release.
 3. Run the legacy wheel migration once in the shared BLOCKING queue.
 4. Compile each standalone C# action inside the exact Streamer.bot version used on stream.
 5. Test correct reward-trigger arguments and duplicate redemption refund/fulfillment behavior.
-6. Test !checkins, !checkinboard, !wheel, !addgame and !wheeladmin with correct permissions.
+6. Test !checkins, !checkinboard, !wheel, !addgame and !wheeladmin with correct permissions, including pending approval/rejection, duplicate-title denial and no-cost replacement.
+   Test message redelivery after the Eastern month boundary and validate the nightly archive excludes pending games.
 7. Test crashes/recovery in a separate Streamer.bot instance; verify no duplicate wheel slots.
 8. Verify OBS WebSocket response and the 60-second timer.
 9. Run diagnostics/reconciliation, export another snapshot and store it off-machine.
@@ -197,5 +217,6 @@ Streamer.bot global-variable writes are independent. A journal helps recover
 interrupted wheel submissions, but cannot make cross-variable changes fully
 atomic. Audit history is month-partitioned JSON and begins only after this
 refactor; reconstructing pre-v5 streams requires existing aggregate counters.
+Monthly archives are **prepared for a separate spinning tool**; no winners are chosen by this project. The localhost dashboard operates on exported snapshots, not on live Streamer.bot state.
 The backup's user-variable inventory includes the known keys from this repo:
 custom per-user variables require explicitly extending the exporter/importer.
