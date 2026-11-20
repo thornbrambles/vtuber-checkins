@@ -1,20 +1,25 @@
-name: Wheel credit policy tests
+name: Check-in reliability tests
 
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches: [main, refactor/wheel-ledger-and-commands]
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  policy-tests:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run accounting and recovery model tests
+      - name: Validate Python syntax
+        run: python -m compileall -q tools tests
+      - name: Validate centralized milestone and command config
+        run: python tools/sync-config.py --check
+      - name: Run policy, backup, reconciliation and sandbox tests
         run: python -m unittest discover -s tests -v
