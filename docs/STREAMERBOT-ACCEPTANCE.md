@@ -34,6 +34,13 @@ and never run destructive tests on the actual viewer records.
 | Chat redelivery across month | Replay previous-month msgId after 1st | same entry ID recognized; no new credit or monthly slot |
 | Restart/crash recovery | Stop after pending journal, restart and send !addgame | exactly one ledger slot and spent credit, no duplicate submission |
 | Manual archive | Run CI - Month Rollover for previous month | approved-only snapshot, idempotent on repeat; pending count noted |
+| Spin with pending | !spinwheel with unreviewed past-month game | refuses to draw; no winner selected |
+| Spin once | !spinwheel with approved past-month games | chosen winner persisted before OBS animation; all approved submission IDs have equal weight |
+| Replay | !spinwheel replay YYYY-MM | same winner and same selected slice; no new draw, no repeat winner chat message |
+| Duplicate spin | !spinwheel YYYY-MM again | refuses second draw until explicit broadcaster reset |
+| Hide and expire | !spinwheel hide; let a new test spin finish | wheel hides on demand or after ~18 seconds; existing check-in overlay remains unchanged |
+| Winner chat timing | Enable CI - Wheel Reveal local timer, spin once | winning game announced after animation, at most once per spin ID |
+| Reset authorization | Non-broadcaster and broadcaster try !spinwheel reset YYYY-MM RESET-YYYY-MM | only broadcaster with exact confirmation can reset, with history retained |
 | Moderator auth | Non-mod sends !wheeladmin and !checkindiag | action refuses; moderator/broadcaster succeeds |
 | OBS unchanged | Check in after a test redemption | existing leaderboard/60-second behavior unchanged |
 | Backup & restore | Export, validate checksum; dry-run import on disposable instance; explicitly restore | exact selected viewer and wheel status restored |
@@ -52,11 +59,12 @@ and never run destructive tests on the actual viewer records.
 Do not merge/deploy until:
 
 - GitHub Python tests pass.
+- GitHub Node OBS wheel animation tests pass; the wheel points to the preselected winner at the end.
 - The GitHub .NET stub compile job passes.
 - Actual installed Streamer.bot compiles every action.
 - Real Twitch reward fulfillment/cancellation and chat event arg names are verified.
 - A test-channel full workflow above passes and the backup can be restored.
-- No OBS overlay changes are required for this upgrade.
+- The original check-in OBS overlay is unchanged; only the optional second, hidden-by-default wheel source is added.
 
 Document any integration differences found in your installed version of Streamer.bot.
 There is no way for the GitHub workflow to authenticate against your local Streamer.bot/Twitch without a separate integration test environment.
