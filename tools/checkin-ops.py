@@ -148,7 +148,20 @@ def reconcile(data):
     users = data["users"]
     globals_ = data["globals"]
     entries, findings = wheel_entries(globals_)
-    counts = Counter(str(e.get("userId", "")) for e in entries if e.get("userId"))
+    slots = {(str(entry.get("userId")), str(entry.get("slotId") or entry.get("id")))
+             for entry in entries if entry.get("userId")}
+    counts = Counter(uid for uid, slot in slots)
+    # An older ledger entry without status is approved. Rejected/replaced
+    # records still consume one historical slot, not an extra credit.
+    approved_titles = {}
+    for entry in entries:
+        if entry.get("removed") or entry.get("replacedBy") or entry.get("status", "approved") != "approved":
+            continue
+        title = " ".join(str(entry.get("game", "")).split()).casefold()
+        key = (entry.get("month"), title)
+        if key in approved_titles:
+            findings.append(f"{entry.get('month')}: duplicate approved game title: {title}")
+        approved_titles[key] = entry.get("id")
     ids = {u["userId"] for u in users}
     user_rows = []
     for u in users:
@@ -217,7 +230,7 @@ def sandbox_main(args):
     op = args.operation
     if op == "stream":
         state["stream"] += 1
-    elif op in {"checkin", "game", "set", "reset"}:
+    elif op in {"checkin", "game", "approve", "reject", "set", "reset"}:
         name = args.viewer or ""
         if not VIEWER_NAME.fullmatch(name):
             raise CheckinError("Sandbox viewer should be a synthetic name, e.g. test_alice")
@@ -241,29 +254,49 @@ def sandbox_main(args):
                 viewer["lastStream"] = 0
         elif op == "reset":
             viewer["total"] = viewer["streak"] = viewer["lastStream"] = 0
-        elif op == "game":
-            if not args.title or not 2 <= len(args.title) <= 100:
-                raise CheckinError("game needs a title between 2 and 100 characters")
-            if viewer["earned"] <= viewer["spent"]:
-                raise CheckinError("No game credits available")
-            now = dt.datetime.now(dt.timezone.utc)
+        elif op in {"game", "approve", "reject"}:
+            now = dt.datetime.fromisoformat(args.at.replace("Z", "+00:00")) if getattr(args, "at", None) else dt.datetime.now(dt.timezone.utc)
+            if now.tzinfo is None:
+                raise CheckinError("--at needs a timezone offset")
             try:
                 eastern = ZoneInfo("America/New_York")
             except ZoneInfoNotFoundError:
-                # Windows Python may lack the IANA tzdata package. This only
-                # affects synthetic sandbox display dates, never production.
                 eastern = dt.timezone.utc
                 print("WARNING: IANA timezone data unavailable; using UTC in sandbox", file=sys.stderr)
             month = now.astimezone(eastern).strftime("%Y-%m")
-            monthly_uses = sum(1 for entry in state["wheel"]
-                               if entry["user"] == name and entry["month"] == month)
-            if monthly_uses >= MONTHLY_GAME_LIMIT:
-                raise CheckinError("Monthly game submission limit reached; credits carry over")
-            viewer["spent"] += 1
-            state["wheel"].append({
-                "id": f"sandbox-{len(state['wheel'])+1}",
-                "user": name, "game": args.title, "month": month, "utc": now.isoformat()
-            })
+            if op in {"approve", "reject"}:
+                matches = [entry for entry in state["wheel"] if entry["user"] == name and
+                           entry["month"] == month and entry.get("status") == "pending"]
+                if not matches:
+                    raise CheckinError("No pending game for this viewer/month")
+                matches[0]["status"] = "approved" if op == "approve" else "rejected"
+            else:
+                if not args.title or not 2 <= len(args.title) <= 100:
+                    raise CheckinError("game needs a title between 2 and 100 characters")
+                current = [entry for entry in state["wheel"] if entry["month"] == month]
+                rejected = next((entry for entry in current if entry["user"] == name and
+                                 entry.get("status") == "rejected" and not entry.get("replacedBy")), None)
+                normalized = " ".join(args.title.split()).casefold()
+                if any(" ".join(entry["game"].split()).casefold() == normalized and
+                       entry.get("status", "approved") in ("approved", "pending") and
+                       not entry.get("removed") for entry in current):
+                    raise CheckinError("Duplicate game title this month")
+                slots = {entry.get("slotId", entry["id"]) for entry in current if entry["user"] == name}
+                if rejected is None and len(slots) >= MONTHLY_GAME_LIMIT:
+                    raise CheckinError("Monthly game submission limit reached; credits carry over")
+                if rejected is None and viewer["earned"] <= viewer["spent"]:
+                    raise CheckinError("No game credits available")
+                identifier = f"sandbox-{len(state['wheel'])+1}"
+                if rejected:
+                    rejected["replacedBy"] = identifier
+                else:
+                    viewer["spent"] += 1
+                state["wheel"].append({
+                    "id": identifier,
+                    "slotId": rejected.get("slotId", rejected["id"]) if rejected else identifier,
+                    "user": name, "game": args.title, "month": month,
+                    "status": "pending", "utc": now.isoformat()
+                })
         viewer["earned"] = max(viewer["earned"], viewer["spent"], viewer["total"] // 10)
     if op != "status":
         p.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -284,6 +317,7 @@ def main(argv=None):
     sandbox.add_argument("--viewer")
     sandbox.add_argument("--value", type=int)
     sandbox.add_argument("--title")
+    sandbox.add_argument("--at", help="Synthetic ISO time with timezone (e.g. 2026-12-01T00:02:00-05:00)")
     sandbox.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
     try:
