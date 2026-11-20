@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 
 public class CPHInline
 {
+    private const int MonthlyLimit = 3; // Per viewer, Eastern calendar month.
     private class WheelEntry
     {
         public string id { get; set; }
@@ -40,12 +41,7 @@ public class CPHInline
         int used = Math.Max(0, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_claimed", true));
         int earned = Math.Max(Math.Max(used, CPH.GetTwitchUserVarById<int>(id, "ci_wheel_earned", true)), total / 10);
 
-        if (sub == "" || sub == "credits")
-        {
-            CPH.SendMessage($"🎮 @{name}: {earned - used} game credits available (earned {earned}, used {used}, lifetime check-ins {total}). Submit: !addgame Game Title. Current wheel: !wheel list");
-            return true;
-        }
-        if (sub != "list")
+        if (sub != "" && sub != "credits" && sub != "list")
         {
             CPH.SendMessage("Use !wheel, !wheel credits or !wheel list");
             return true;
@@ -67,7 +63,20 @@ public class CPHInline
             CPH.SendMessage("Wheel data is unavailable. Contact a moderator.");
             return false;
         }
-        entries = entries.Where(e => e != null && !e.removed).ToList();
+        if (entries.Any(e => e == null || String.IsNullOrWhiteSpace(e.userId)))
+        {
+            CPH.LogError("Malformed wheel entries in " + key);
+            CPH.SendMessage("Wheel data needs a mod to take a look.");
+            return false;
+        }
+        int monthlyUsed = entries.Count(e => e.userId == id); // Include removed entries.
+        int monthlyRemaining = Math.Max(0, MonthlyLimit - monthlyUsed);
+        if (sub == "" || sub == "credits")
+        {
+            CPH.SendMessage($"🎮 @{name}: {earned-used} credits saved, {monthlyRemaining}/{MonthlyLimit} game picks left this month. Use !addgame Title.");
+            return true;
+        }
+        entries = entries.Where(e => !e.removed).ToList();
         if (entries.Count == 0)
         {
             CPH.SendMessage("🎮 No games submitted to this month's wheel yet.");
