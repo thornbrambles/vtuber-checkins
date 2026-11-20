@@ -68,7 +68,13 @@ public class CPHInline
         string ledgerKey = "ci_wheel_month_" + eastern.ToString("yyyy_MM");
         string msgId;
         CPH.TryGetArg("msgId", out msgId);
-        string entryId = String.IsNullOrWhiteSpace(msgId) ? Guid.NewGuid().ToString("N") : "chat-" + msgId;
+        if (String.IsNullOrWhiteSpace(msgId))
+        {
+            CPH.LogError("!addgame missing msgId. Refusing unsafe submission without a stable Twitch message identity.");
+            CPH.SendMessage($"@{name}, couldn't save your game. Please ask a mod to check the command setup.");
+            return false;
+        }
+        string entryId = "chat-" + msgId;
 
         // Duplicate Twitch delivery MUST be checked before the credit or
         // monthly allowance. Scan every partition, not just today's month:
