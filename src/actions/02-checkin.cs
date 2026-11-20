@@ -45,8 +45,8 @@ public class CPHInline
         {
             bool refunded = CancelRedemption("stream not initialized");
             CPH.SendMessage(refunded
-                ? $"🌿 @{userName}, your check-in was NOT recorded because the stream has not started. Your Channel Points redemption was canceled for a refund."
-                : $"⚠️ @{userName}, your check-in was NOT recorded because the stream has not started. The refund could not be confirmed; please contact a moderator.");
+                ? $"@{userName}, check-ins aren't open yet. Your points were refunded."
+                : $"@{userName}, check-ins aren't open yet. Couldn't refund your points — please ask a mod.");
             return true;
         }
 
@@ -65,8 +65,8 @@ public class CPHInline
             }
             bool refunded = CancelRedemption("duplicate check-in");
             CPH.SendMessage(refunded
-                ? $"🌿 @{userName}, you are already checked in for this stream. No extra check-in was added; this duplicate redemption was canceled for a refund."
-                : $"⚠️ @{userName}, you are already checked in for this stream. No extra check-in was added, but the refund could not be confirmed. Please contact a moderator.");
+                ? $"@{userName}, you're already checked in! Your points were refunded."
+                : $"@{userName}, you're already checked in. Couldn't refund the extra redemption — please ask a mod.");
             return true;
         }
 
@@ -98,17 +98,15 @@ public class CPHInline
             }
         }
 
-        string streakText = streak == 1 ? "a new streak started" : streak + "-stream streak";
-        string welcome = total == 1 ? "Welcome to the Grove!" : "You're checked in!";
-        CPH.SendMessage($"✅ 🌿 @{userName} — {welcome} Check-in #{total} • {streakText} • {count} viewer(s) checked in this stream. Your next step: !checkins for your progress.");
+        CPH.SendMessage($"🌿 @{userName} checked in! Total: {total} | Streak: {streak} | Here today: {count}");
 
         if (unlocked != "")
-            CPH.SendMessage($"🏆 Milestone unlocked! @{userName} earned the {unlocked} badge for {total} total check-ins!");
+            CPH.SendMessage($"🏆 @{userName} got the {unlocked} badge!");
 
         if (earnedCredits > previousEarnedCredits)
         {
             int availableCredits = Math.Max(0, earnedCredits - usedCredits);
-            CPH.SendMessage($"🎮 Game wheel credit earned! @{userName} now has {availableCredits} available. Submit a game with !game Game Title.");
+            CPH.SendMessage($"🎮 @{userName} earned a game pick! {availableCredits} left. Use !game <title>.");
         }
 
         AppendAudit(new {
