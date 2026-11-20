@@ -96,7 +96,6 @@ class MonthPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = pathlib.Path(temp) / "sandbox.json"
             self.run_game(path, "init", "test_alice")
-            self.run_game(path, "set", "test_alice", at="2026-11-30T23:55:00-05:00") if False else None
             args = types.SimpleNamespace(
                 file=str(path), operation="set", viewer="test_alice",
                 title=None, at=None, value=50, force=False
