@@ -2,6 +2,13 @@
 
 A Twitch Channel Points check-in system for Streamer.bot, with persistent lifetime counts, consecutive-stream streaks, milestones, moderator controls, an OBS leaderboard visible for 60 seconds after a successful check-in, and monthly game wheel credits (one submission per ten lifetime check-ins).
 
+## Reliability and operations
+
+- [Operational runbook](docs/OPERATIONS.md): backups, dry-run restore, diagnostics, reconciliation, moderation, safe upgrades and production test gates
+- [Central configuration](config/checkins.json): authoritative milestones, reward interval and command registration intent
+- [Offline synthetic sandbox](tools/checkin-ops.py): simulated streams and game credits, separate from production Streamer.bot
+- [Full chat command reference](docs/COMMANDS.md): includes moderator `!wheeladmin` controls
+
 ## Components
 
 - `src/actions/`: Streamer.bot C# actions, manually installed in the Actions editor.
