@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 public class CPHInline
 {
@@ -99,12 +100,36 @@ public class CPHInline
         if (unlocked != "")
             CPH.SendMessage($"🏆 @{userName} unlocked the {unlocked} badge for {total} check-ins!");
 
+        AppendAudit(new {
+            id="checkin-"+redemptionId, type="CHECKIN", atUtc=DateTimeOffset.UtcNow.ToString("o"),
+            userId, userName, streamId, totalAfter=total, streakAfter=streak,
+            creditEarned=earnedCredits
+        }, "checkin-"+redemptionId);
         CPH.SetGlobalVar("ci_last_checkin_at_ms", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), true);
         Publish(streamId, count, userName, unlocked, total, streak);
         if (!CPH.TwitchRedemptionFulfill(rewardId, redemptionId))
             CPH.LogWarn("Check-in recorded, but Twitch could not automatically fulfill redemption " + redemptionId +
                         ". Check the Twitch reward queue manually; do NOT redeem again to fix it.");
         return true;
+    }
+
+    // Audit is derived history, not an atomic database transaction. Counters
+    // remain the primary state; reconciliation detects missing events.
+    private void AppendAudit(object record, string eventId)
+    {
+        string month = DateTimeOffset.UtcNow.ToString("yyyy_MM");
+        string key = "ci_events_month_" + month;
+        try
+        {
+            string raw = CPH.GetGlobalVar<string>(key, true);
+            var events = String.IsNullOrWhiteSpace(raw) ? new JArray() : JArray.Parse(raw);
+            if (!events.OfType<JObject>().Any(e => (string)e["id"] == eventId))
+            {
+                events.Add(JObject.FromObject(record));
+                CPH.SetGlobalVar(key, events.ToString(Formatting.None), true);
+            }
+        }
+        catch (Exception ex) { CPH.LogError("CHECKIN AUDIT FAILED: " + ex.Message); }
     }
 
     private void CancelRedemption(string reason)
