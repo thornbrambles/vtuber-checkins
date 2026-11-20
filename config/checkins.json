@@ -71,6 +71,12 @@
       "access": "moderator",
       "match": "starts-with",
       "action": "13-wheel-admin.cs"
+    },
+    {
+      "name": "!checkindiag",
+      "access": "moderator",
+      "match": "exact",
+      "action": "15-diagnostic-command.cs"
     }
   ]
 }
