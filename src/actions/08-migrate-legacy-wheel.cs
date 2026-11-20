@@ -2,6 +2,8 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.Text.RegularExpressions;
 
 public class CPHInline
 {
@@ -26,6 +28,8 @@ public class CPHInline
             CPH.LogError("Recover the pending check-in or stream transition before changing accounting state.");
             return false;
         }
+        try { MigrateReceipts(); }
+        catch (Exception ex) { CPH.LogError("Receipt migration stopped: " + ex.Message); return false; }
         if (CPH.GetGlobalVar<bool>("ci_wheel_legacy_migrated", true))
         {
             InitializeCreditHighwater();
@@ -115,6 +119,44 @@ public class CPHInline
     // All v3 viewers need an earned-credit baseline even when the legacy
     // wheel array is absent. Normalize saved spent/earned and current totals
     // without reducing either high-water counter.
+    private void MigrateReceipts()
+    {
+        const string flag = "ci_checkin_receipts_migrated";
+        if (CPH.GetGlobalVar<bool>(flag, true)) return;
+        const string auditPrefix = "ci_events_month_";
+        var updates = new Dictionary<string, JObject>(StringComparer.Ordinal);
+        foreach (var variable in CPH.GetGlobalVarValues(true))
+        {
+            string key = variable.VariableName;
+            if (!Regex.IsMatch(key ?? "", @"^ci_events_month_\d{4}_(0[1-9]|1[0-2])$")) continue;
+            try
+            {
+                string receiptKey = "ci_checkin_receipts_month_" + key.Substring(auditPrefix.Length);
+                string raw = CPH.GetGlobalVar<string>(key, true);
+                if (String.IsNullOrWhiteSpace(raw)) continue;
+                string saved = CPH.GetGlobalVar<string>(receiptKey, true);
+                var receipts = String.IsNullOrWhiteSpace(saved) ? new JObject() : JObject.Parse(saved);
+                foreach (JObject entry in JArray.Parse(raw))
+                {
+                    if ((string)entry["type"] != "CHECKIN") continue;
+                    string id = (string)entry["id"], user = (string)entry["userId"];
+                    if (String.IsNullOrWhiteSpace(user) || id == null || !id.StartsWith("checkin-", StringComparison.Ordinal) || id.Length == 8)
+                        throw new InvalidOperationException("Invalid legacy check-in receipt");
+                    id = id.Substring(8);
+                    if (receipts[id] != null && (string)receipts[id] != user)
+                        throw new InvalidOperationException("Conflicting receipt owner for " + id);
+                    receipts[id] = user;
+                }
+                if (receipts.HasValues) updates.Add(receiptKey, receipts);
+            }
+            catch (Exception ex) { throw new InvalidOperationException(key + ": " + ex.Message, ex); }
+        }
+        foreach (var update in updates)
+            CPH.SetGlobalVar(update.Key, update.Value.ToString(Formatting.None), true);
+        CPH.SetGlobalVar(flag, true, true);
+        CPH.LogInfo("Migrated legacy redemption receipts from " + updates.Count + " month(s).");
+    }
+
     private void InitializeCreditHighwater()
     {
         var totals = CPH.GetTwitchUsersVar<int>("ci_total", true)

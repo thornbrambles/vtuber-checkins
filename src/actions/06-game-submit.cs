@@ -105,7 +105,19 @@ public class CPHInline
         }
 
         List<WheelEntry> entries;
-        try { entries = Load(ledgerKey); }
+        try
+        {
+            // Finish earlier submissions for this month before accepting another title.
+            foreach (var journal in CPH.GetTwitchUsersVar<string>("ci_wheel_pending_json", true))
+            {
+                if (String.IsNullOrWhiteSpace(journal.Value)) continue;
+                var pendingMonth = (string)JObject.Parse(journal.Value).SelectToken("entry.month");
+                if (!Regex.IsMatch(pendingMonth ?? "", @"^\d{4}-(0[1-9]|1[0-2])$") ||
+                    (pendingMonth == month && !RecoverPending(journal.UserId)))
+                    throw new InvalidOperationException("Resolve unfinished submissions before accepting new games.");
+            }
+            entries = Load(ledgerKey);
+        }
         catch (Exception ex)
         {
             CPH.LogError("Cannot load monthly wheel: " + ex.Message);
@@ -207,6 +219,14 @@ public class CPHInline
         List<WheelEntry> entries;
         try { entries = Load(key); }
         catch (Exception ex) { CPH.LogError("Cannot recover wheel: " + ex.Message); return false; }
+        bool alreadySaved = entries.Any(x => x.id == pending.entry.id);
+        if (!alreadySaved && entries.Any(x => !x.removed && String.IsNullOrWhiteSpace(x.replacedBy) &&
+            (String.IsNullOrWhiteSpace(x.status) || x.status == "approved" || x.status == "pending") &&
+            Normalize(x.game) == Normalize(pending.entry.game)))
+        {
+            CPH.LogError("Pending title is already reserved. Review the month ledger and journal before retrying.");
+            return false;
+        }
         if (replacement)
         {
             var original = entries.FirstOrDefault(x => x.id == pending.replacesId && x.userId == userId);
@@ -219,7 +239,7 @@ public class CPHInline
             }
             original.replacedBy = pending.entry.id;
         }
-        if (!entries.Any(x => x.id == pending.entry.id))
+        if (!alreadySaved)
             entries.Add(pending.entry);
         // Persist both the replacement pointer and new entry together.
         CPH.SetGlobalVar(key, JsonConvert.SerializeObject(entries), true);

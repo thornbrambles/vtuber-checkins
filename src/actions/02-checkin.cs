@@ -52,6 +52,8 @@ public class CPHInline
                 if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_stream_start_pending_json", true)))
                     throw new InvalidOperationException("Pending stream transition could not be finished by CI - Start Stream");
             }
+            if (!CPH.GetGlobalVar<bool>("ci_checkin_receipts_migrated", true))
+                throw new InvalidOperationException("Run action 08 to migrate legacy redemption receipts before enabling check-ins");
             bool? awarded = RecordedOutcome(userId, redemptionId);
             if (awarded.HasValue)
             {
@@ -151,13 +153,6 @@ public class CPHInline
                     if ((string)receipt != userId) throw new InvalidOperationException("Redemption owner mismatch");
                     return true;
                 }
-            }
-            else if (key.StartsWith("ci_events_month_", StringComparison.Ordinal))
-            {
-                raw = CPH.GetGlobalVar<string>(key, true);
-                if (!String.IsNullOrWhiteSpace(raw) && JArray.Parse(raw).OfType<JObject>().Any(e =>
-                    (string)e["id"] == "checkin-" + redemptionId && (string)e["userId"] == userId))
-                    return true;
             }
         }
         return null;

@@ -13,6 +13,7 @@ public static class RuntimeTests
     private static void Setup() {
         CPH.Reset();
         CPH.ActionRunner = name => name == "CI - Start Stream" && new Action01().Execute();
+        CPH.Globals["ci_checkin_receipts_migrated"] = true;
         CPH.Globals["ci_stream_id"] = 7;
         CPH.Globals["ci_stream_count"] = 0;
         CPH.Users["123"] = new Dictionary<string, object> {
@@ -45,9 +46,18 @@ public static class RuntimeTests
         Assert(new Action02().Execute(), "legacy last-ID receipt failed");
         Assert(CPH.GetTwitchUserVarById<int>("123", "ci_total") == 9, "legacy ID counted again");
         Setup();
-        CPH.Globals["ci_events_month_2026_01"] = "[{\"id\":\"checkin-R1\",\"userId\":\"123\"}]";
-        Assert(new Action02().Execute(), "legacy audit receipt failed");
+        CPH.Globals.Remove("ci_checkin_receipts_migrated");
+        CPH.Globals["ci_events_month_2026_01"] = "[{\"type\":\"CHECKIN\",\"id\":\"checkin-R1\",\"userId\":\"123\"}]";
+        CPH.Globals["ci_events_month_2026_02"] = "corrupt audit";
+        Assert(!new Action08().Execute() && !CPH.GetGlobalVar<bool>("ci_checkin_receipts_migrated"), "bad migration was marked complete");
+        Assert(!new Action02().Execute(), "check-in worked without receipt migration");
+        CPH.Globals.Remove("ci_events_month_2026_02");
+        Assert(new Action08().Execute(), "legacy receipt migration failed");
+        CPH.Globals["ci_events_month_2026_01"] = "corrupt after migration";
+        Assert(new Action02().Execute(), "migrated legacy receipt failed");
         Assert(CPH.GetTwitchUserVarById<int>("123", "ci_total") == 9, "legacy audit counted again");
+        Redeem("fresh"); Assert(new Action02().Execute(), "damaged audit blocked fresh redemption");
+        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_total") == 10, "fresh redemption not counted");
         Setup(); new Action02().Execute();
         CPH.Users["123"]["ci_total"] = 0; CPH.Users["123"].Remove("ci_last_stream");
         CPH.Globals["ci_stream_count"] = 0;
@@ -180,26 +190,73 @@ public static class RuntimeTests
         Console.WriteLine("PASS unresolved wheel journal blocks finalization");
     }
 
-    private static void DashboardPreconditions()
+    private static void OffStreamAdministration()
+    {
+        Setup(); CPH.Globals.Remove("ci_stream_id"); CPH.Args.Clear();
+        CPH.Args["userId"] = "mod"; CPH.Args["userName"] = "moderator";
+        CPH.Args["rawInput"] = "set @alice 20";
+        Assert(new Action05().Execute() && CPH.GetTwitchUserVarById<int>("123", "ci_total") == 20,
+            "moderator could not correct counts without a stream");
+        CPH.Globals["ci_wheel_legacy_migrated"] = true;
+        string key = "ci_wheel_month_2026_01";
+        CPH.Globals[key] = "[{\"id\":\"chat-abcdefgh\",\"userId\":\"123\",\"game\":\"Game\",\"status\":\"pending\"}]";
+        CPH.Args["rawInput"] = "approve chat-abcdefgh";
+        Assert(new Action13().Execute() && (string)JArray.Parse(CPH.GetGlobalVar<string>(key))[0]["status"] == "approved",
+            "moderator could not approve without a stream");
+        CPH.Args["userId"] = "viewer";
+        CPH.Args["rawInput"] = "set @alice 30";
+        new Action05().Execute();
+        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_total") == 20, "non-moderator edited counts");
+        CPH.Args["rawInput"] = "reject chat-abcdefgh";
+        new Action13().Execute();
+        Assert((string)JArray.Parse(CPH.GetGlobalVar<string>(key))[0]["status"] == "approved", "non-moderator changed review status");
+        Console.WriteLine("PASS off-stream moderator edits and authorization");
+    }
+
+    private static void PendingTitleReservation()
+    {
+        Setup(); CPH.Globals["ci_wheel_legacy_migrated"] = true;
+        CPH.Users["123"]["ci_wheel_earned"] = 1;
+        CPH.Users["456"] = new Dictionary<string, object> {{"ci_wheel_earned", 1}};
+        CPH.Args["rawInput"] = "Same Game"; CPH.Args["msgId"] = "original-id";
+        CPH.FailAfterWrite = 1;
+        try { new Action06().Execute(); } catch (InvalidOperationException) {}
+        CPH.FailAfterWrite = -1;
+        CPH.Args["userId"] = "456"; CPH.Args["msgId"] = "second-id";
+        Assert(new Action06().Execute(), "duplicate rejection failed");
+        var ledger = CPH.Globals.Single(kv => kv.Key.StartsWith("ci_wheel_month_"));
+        Assert(JArray.Parse((string)ledger.Value).Count == 1, "both duplicate titles were recorded");
+        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_wheel_claimed") == 1 &&
+            CPH.GetTwitchUserVarById<int>("456", "ci_wheel_claimed") == 0, "both viewers were charged");
+        Console.WriteLine("PASS unresolved submission reserves its title");
+    }
+
+    private static void ReplayPreservesAnnouncement()
     {
         Setup();
-        var edits = JObject.Parse(@"{""globals"":{},""users"":[{""userId"":""123"",""vars"":{""ci_total"":4}}],
-            ""expected"":{""globals"":{},""users"":{""123"":{""ci_total"":9,""ci_wheel_claimed"":null}}}}");
-        var validate = typeof(Action10).GetMethod("CheckDashboardPreconditions", BindingFlags.NonPublic | BindingFlags.Instance);
-        validate.Invoke(new Action10(), new object[] { edits });
-        CPH.Users["123"]["ci_wheel_claimed"] = 1;
-        try { validate.Invoke(new Action10(), new object[] { edits }); }
-        catch (TargetInvocationException e) when (e.InnerException is System.IO.InvalidDataException)
-        {
-            Console.WriteLine("PASS dashboard importer rejects stale wallet dependency");
-            return;
-        }
-        throw new Exception("Stale dashboard edit passed validation");
+        string month = DateTimeOffset.UtcNow.AddMonths(-2).ToString("yyyy-MM");
+        string suffix = month.Replace('-', '_');
+        CPH.Globals["ci_wheel_month_" + suffix] = "[{\"id\":\"entry-1\",\"userId\":\"123\",\"game\":\"Winning Game\",\"status\":\"approved\"}]";
+        CPH.Args["userId"] = "mod"; CPH.Args["rawInput"] = month;
+        Assert(new Action17().Execute(), "draw failed");
+        string key = "ci_wheel_spin_result_" + suffix;
+        var result = JObject.Parse(CPH.GetGlobalVar<string>(key));
+        Assert((long)result["revealAtMs"] > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), "draw did not schedule reveal");
+        result["revealAtMs"] = 1L;
+        CPH.Globals[key] = result.ToString(Formatting.None);
+        CPH.Args["rawInput"] = "replay " + month;
+        Assert(new Action17().Execute(), "replay failed");
+        CPH.Args["rawInput"] = "hide";
+        Assert(new Action17().Execute(), "hide failed");
+        Assert(new Action18().Execute() && new Action18().Execute(), "reveal failed");
+        Assert(CPH.Messages.Count(m => m.Contains("wheel picked 'Winning Game'")) == 1, "replay/hide lost or duplicated announcement");
+        Console.WriteLine("PASS replay and hide preserve the scheduled winner announcement");
     }
 
     public static int Main() {
         CheckinRetries(); InterruptedCheckins(); ModerationDuplicates(); FrameworkDraw();
-        StreamAndRejectionRegression(); WheelJournalRegression(); DashboardPreconditions();
+        StreamAndRejectionRegression(); WheelJournalRegression();
+        OffStreamAdministration(); PendingTitleReservation(); ReplayPreservesAnnouncement();
         return 0;
     }
 }

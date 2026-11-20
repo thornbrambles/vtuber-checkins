@@ -1,5 +1,7 @@
 # Chat commands and Channel Points redemption
 
+Moderators can run `!checkinadmin` and `!wheeladmin` in the channel chat between broadcasts. Streamer.bot must be running and connected to Twitch.
+
 This document describes the commands present **in the repository**. These are not automatically created in your running Streamer.bot instance: you must configure each command and action trigger in the Streamer.bot UI.
 
 ## Check in — Twitch Channel Points reward (not a chat command)

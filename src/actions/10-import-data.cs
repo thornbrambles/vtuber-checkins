@@ -29,7 +29,7 @@ public class CPHInline
         "ci_last_checkin_at_ms"
     };
     private static readonly HashSet<string> BoolGlobalKeys = new HashSet<string> {
-        "ci_wheel_legacy_migrated"
+        "ci_wheel_legacy_migrated", "ci_checkin_receipts_migrated"
     };
 
     public bool Execute()
@@ -76,13 +76,12 @@ public class CPHInline
         try { root = JObject.Parse(File.ReadAllText(path)); }
         catch (Exception ex) { CPH.LogError("CHECKIN IMPORT invalid JSON: " + ex.Message); return false; }
 
-        bool staged = (string)root["format"] == "vtuber-checkins-dashboard-edits";
-        if ((!staged && (string)root["format"] != "vtuber-checkins-backup") ||
+        if ((string)root["format"] != "vtuber-checkins-backup" ||
             (int?)root["schemaVersion"] != 1 ||
             !(root["globals"] is JObject) ||
             !(root["users"] is JArray))
         {
-            CPH.LogError("CHECKIN IMPORT: wrong format/version. Expected a check-in backup or dashboard edits, schemaVersion 1.");
+            CPH.LogError("CHECKIN IMPORT: wrong format/version. Expected a check-in backup, schemaVersion 1.");
             return false;
         }
 
@@ -93,7 +92,6 @@ public class CPHInline
         var userWrites = new List<Tuple<string, string, object>>();
         try
         {
-            if (staged) CheckDashboardPreconditions(root);
             foreach (var prop in globals.Properties())
             {
                 if (!prop.Name.StartsWith("ci_", StringComparison.Ordinal))
@@ -178,7 +176,7 @@ public class CPHInline
             CPH.LogInfo("CHECKIN IMPORT DRY RUN ONLY. Make a fresh backup first; set ApplyImport=true and recompile to restore.");
             return true;
         }
-        if (!staged && conflicts > 0 && !OverwriteExisting)
+        if (conflicts > 0 && !OverwriteExisting)
         {
             CPH.LogError("CHECKIN IMPORT refused: existing data would be overwritten. Export current state, review backup, then explicitly set OverwriteExisting=true.");
             return false;
@@ -200,56 +198,6 @@ public class CPHInline
         }
         CPH.LogInfo("CHECKIN IMPORT applied successfully. Revert ApplyImport=false and recompile immediately.");
         return true;
-    }
-
-    private void CheckDashboardPreconditions(JObject root)
-    {
-        var expected = (JObject)root["expected"];
-        var globals = (JObject)expected["globals"];
-        var users = (JObject)expected["users"];
-        var existing = CPH.GetGlobalVarValues(true).ToDictionary(x => x.VariableName, x => x.Value);
-        foreach (var write in ((JObject)root["globals"]).Properties())
-            if (globals.Property(write.Name) == null || !DashboardGlobal(write.Name))
-                throw new InvalidDataException("Unguarded or unsupported dashboard global: " + write.Name);
-        foreach (var field in globals.Properties())
-        {
-            object value;
-            existing.TryGetValue(field.Name, out value);
-            RequireUnchanged(field.Value, value, field.Name);
-        }
-        foreach (var user in (JArray)root["users"])
-        {
-            string id = (string)user["userId"];
-            var before = (JObject)users[id];
-            foreach (var write in ((JObject)user["vars"]).Properties())
-                if (before.Property(write.Name) == null || !(write.Name == "ci_total" || write.Name == "ci_streak" ||
-                    write.Name == "ci_last_stream" || write.Name == "ci_badge" || write.Name == "ci_wheel_earned"))
-                    throw new InvalidDataException("Unguarded or unsupported dashboard field: " + write.Name);
-            foreach (var field in before.Properties())
-            {
-                object value;
-                if (IntUserKeys.Contains(field.Name))
-                {
-                    int n = CPH.GetTwitchUserVarById<int>(id, field.Name, true);
-                    value = n == 0 && field.Value.Type == JTokenType.Null ? null : (object)n;
-                }
-                else if (field.Name == "ci_badge") value = CPH.GetTwitchUserVarById<string>(id, field.Name, true);
-                else throw new InvalidDataException("Unsupported dashboard precondition: " + field.Name);
-                RequireUnchanged(field.Value, value, field.Name + " for " + id);
-            }
-        }
-    }
-
-    private static bool DashboardGlobal(string key)
-    {
-        return key == "ci_stream_count" || key == "ci_wheel_audit_json" ||
-            System.Text.RegularExpressions.Regex.IsMatch(key, @"^ci_(wheel|events)_month_\d{4}_(0[1-9]|1[0-2])$");
-    }
-
-    private static void RequireUnchanged(JToken expected, object actual, string name)
-    {
-        if (!JToken.DeepEquals(expected, actual == null ? JValue.CreateNull() : JToken.FromObject(actual)))
-            throw new InvalidDataException("Stale dashboard edit for " + name + ". Export again and restage the edit.");
     }
 
     private static int ReadNonnegativeInt(JToken t, string name)

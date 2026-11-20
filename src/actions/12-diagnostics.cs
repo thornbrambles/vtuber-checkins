@@ -33,6 +33,9 @@ public class CPHInline
         if (!String.IsNullOrWhiteSpace(CPH.GetGlobalVar<string>("ci_stream_start_pending_json", true)))
             Add(findings,"error","PENDING_STREAM_START","A stream transition must finish before new attendance can be recorded.");
 
+        if (!CPH.GetGlobalVar<bool>("ci_checkin_receipts_migrated", true))
+            Add(findings,"error","RECEIPT_MIGRATION_PENDING","Run action 08 before accepting check-ins.");
+
         if (streamId < 0 || streamCount < 0)
             Add(findings,"error","STREAM_NEGATIVE","Stream number/count cannot be negative.");
         if (streamId > 0 && String.IsNullOrWhiteSpace(streamKey))

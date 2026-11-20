@@ -3,19 +3,15 @@
 
 python tools/admin-dashboard.py --backup "C:/.../checkins-2026....json"
 Then open the printed loopback URL. Nothing connects to Twitch or the running
-Streamer.bot process. Save produces a guarded edit file for review/import.
+Streamer.bot process. CSV export is available for approved games.
 """
 import argparse
-import copy
 import re
-import datetime as dt
-import hashlib
 import html
 import importlib.util
 import json
 import pathlib
 import secrets
-import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -23,9 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("checkin_ops", ROOT / "tools/checkin-ops.py")
 ops = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ops)
-wheel_spec = importlib.util.spec_from_file_location("wheel_export", ROOT / "tools/export-wheel.py")
-wheel_export = importlib.util.module_from_spec(wheel_spec)
-wheel_spec.loader.exec_module(wheel_export)
+wheel_export = ops.wheel_export
 
 
 def e(value):
@@ -44,140 +38,6 @@ def month_entries(data, month):
     return key, items
 
 
-def append_audit(data, record):
-    key = "ci_wheel_audit_json" if record["type"] == "WHEEL_REVIEW" else "ci_events_month_" + dt.datetime.now(dt.timezone.utc).strftime("%Y_%m")
-    current = data["globals"].get(key)
-    try:
-        items = json.loads(current) if current else []
-        if not isinstance(items, list):
-            raise ValueError("Audit storage is not a JSON array")
-    except (ValueError, TypeError) as exc:
-        raise ops.CheckinError("Invalid audit data: " + str(exc))
-    record["id"] = "offline-" + secrets.token_hex(16)
-    record["atUtc"] = dt.datetime.now(dt.timezone.utc).isoformat()
-    record["actor"] = "local-dashboard"
-    items.append(record)
-    data["globals"][key] = json.dumps(items, separators=(",", ":"), ensure_ascii=False)
-
-
-def edit_user(data, user_id, total, streak):
-    if data["globals"].get("ci_checkin_pending_json") or data["globals"].get("ci_stream_start_pending_json"):
-        raise ops.CheckinError("Recover the pending check-in or stream start and export again before editing counts")
-    staged = copy.deepcopy(data)
-    matches = [u for u in staged["users"] if u["userId"] == user_id]
-    if len(matches) != 1:
-        raise ops.CheckinError("Viewer not found")
-    if not all(type(x) is int and 0 <= x <= 1_000_000 for x in (total, streak)):
-        raise ops.CheckinError("Counts must be whole numbers from 0 to 1,000,000")
-    user = matches[0]
-    old_total = user["vars"].get("ci_total", 0)
-    old_streak = user["vars"].get("ci_streak", 0)
-    user["vars"]["ci_total"] = total
-    user["vars"]["ci_streak"] = streak if total else 0
-    if total == 0:
-        last = user["vars"].get("ci_last_stream", 0)
-        stream = staged["globals"].get("ci_stream_id", 0)
-        if stream > 0 and last == stream:
-            staged["globals"]["ci_stream_count"] = max(0, staged["globals"].get("ci_stream_count", 0) - 1)
-        # Import skips absent/null fields, so explicitly clear existing attendance.
-        user["vars"]["ci_last_stream"] = 0
-    milestones = json.loads((ROOT / "config/checkins.json").read_text(encoding="utf-8"))["milestones"]
-    badges = [m["badge"] for m in milestones if total >= m["count"]]
-    if badges:
-        user["vars"]["ci_badge"] = badges[-1]
-    else:
-        # Import skips null/missing fields. An empty badge clears existing text on overwrite.
-        user["vars"]["ci_badge"] = ""
-    spent = user["vars"].get("ci_wheel_claimed", 0)
-    user["vars"]["ci_wheel_earned"] = max(
-        user["vars"].get("ci_wheel_earned", 0), spent, total // 10)
-    append_audit(staged, {
-        "type": "ADMIN_EDIT", "userId": user_id,
-        "totalBefore": old_total, "totalAfter": total,
-        "streakBefore": old_streak, "streakAfter": user["vars"]["ci_streak"]
-    })
-    data.clear()
-    data.update(staged)
-
-
-def review_entry(data, month, entry_id, decision):
-    if decision not in ("approved", "rejected"):
-        raise ops.CheckinError("Only approve/reject is supported")
-    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
-        raise ops.CheckinError("Invalid YYYY-MM month")
-    staged = copy.deepcopy(data)
-    key, entries = month_entries(staged, month)
-    matches = [x for x in entries if x.get("id") == entry_id]
-    if len(matches) != 1:
-        raise ops.CheckinError("Game entry not found or duplicate ID")
-    entry = matches[0]
-    if entry.get("removed") or entry.get("replacedBy"):
-        raise ops.CheckinError("Cannot review removed/replaced game")
-    if decision == "approved":
-        title = " ".join(entry.get("game", "").split()).casefold()
-        if any(x is not entry and not x.get("removed") and not x.get("replacedBy") and wheel_export.entry_status(x) == "approved"
-               and " ".join(x.get("game", "").split()).casefold() == title for x in entries):
-            raise ops.CheckinError("Same game already approved this month")
-    before = wheel_export.entry_status(entry)
-    entry["status"] = decision
-    staged["globals"][key] = json.dumps(entries, separators=(",", ":"), ensure_ascii=False)
-    append_audit(staged, {
-        "type": "WHEEL_REVIEW", "operation": decision,
-        "entryId": entry_id, "month": month, "statusBefore": before,
-        "statusAfter": decision
-    })
-    data.clear()
-    data.update(staged)
-
-
-def staged_changes(data, baseline):
-    def changes(before, after):
-        return {key: value for key, value in after.items() if before.get(key) != value}
-
-    globals_changed = changes(baseline["globals"], data["globals"])
-    expected_globals = {key: baseline["globals"].get(key) for key in globals_changed}
-    if "ci_stream_count" in globals_changed:
-        expected_globals["ci_stream_id"] = baseline["globals"].get("ci_stream_id")
-    originals = {user["userId"]: user["vars"] for user in baseline["users"]}
-    users, expected_users = [], {}
-    for user in data["users"]:
-        uid = user["userId"]
-        before = originals[uid]
-        values = changes(before, user["vars"])
-        if values:
-            users.append({"userId": uid, "vars": values})
-            # Derived badge/credit and attendance corrections depend on these even if unchanged.
-            expected_users[uid] = {key: before.get(key) for key in set(values) | {
-                "ci_total", "ci_streak", "ci_last_stream", "ci_badge", "ci_wheel_claimed",
-                "ci_wheel_earned", "ci_reward_last_stream"
-            }}
-    return {"format": "vtuber-checkins-dashboard-edits", "schemaVersion": 1,
-            "globals": globals_changed, "users": users,
-            "expected": {"globals": expected_globals, "users": expected_users}}
-
-
-def export_snapshot(data, original, output_dir, *, baseline=None):
-    ops.check_backup(data)
-    if baseline is None:
-        baseline = ops.load_backup(original)
-    changes = staged_changes(data, baseline)
-    if not changes["users"] and not changes["globals"]:
-        raise ops.CheckinError("No edits to save")
-    output_dir = pathlib.Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    suffix = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
-    dest = output_dir / ("staged-" + suffix + ".json")
-    if dest.resolve() == pathlib.Path(original).resolve():
-        raise ops.CheckinError("Refusing to overwrite original backup")
-    payload = (json.dumps(changes, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-    with dest.open("xb") as handle:
-        handle.write(payload)
-    digest = hashlib.sha256(payload).hexdigest()
-    with pathlib.Path(str(dest) + ".sha256").open("x", encoding="ascii") as handle:
-        handle.write(digest + "  " + dest.name + "\n")
-    return dest
-
-
 def page(data, token, notice, query=""):
     viewer_rows = []
     normalized = query.strip().casefold()
@@ -189,13 +49,8 @@ def page(data, token, notice, query=""):
         uid = e(u["userId"])
         viewer_rows.append(
             "<tr><td>" + e(u.get("userName", uid)) + "<br><small>" + uid + "</small></td>"
-            "<td><form method='post' action='/edit'>"
-            "<input type='hidden' name='token' value='" + e(token) + "'>"
-            "<input type='hidden' name='userId' value='" + uid + "'>"
-            "<input type='number' name='total' min='0' max='1000000' value='" + e(v.get("ci_total", 0)) + "'>"
-            "<input type='number' name='streak' min='0' max='1000000' value='" + e(v.get("ci_streak", 0)) + "'>"
-            "<button>Stage edit</button></form></td>"
-            "<td>" + e(max(v.get("ci_wheel_earned", 0),v.get("ci_total",0)//10)-v.get("ci_wheel_claimed",0)) + "</td></tr>"
+            "<td>" + e(v.get("ci_total") or 0) + " · " + e(v.get("ci_streak") or 0) + "</td>"
+            "<td>" + e(max(0, max(v.get("ci_wheel_earned") or 0, (v.get("ci_total") or 0)//10) - (v.get("ci_wheel_claimed") or 0))) + "</td></tr>"
         )
     months = sorted((k[-7:].replace("_", "-") for k in data["globals"] if k.startswith("ci_wheel_month_")), reverse=True)
     game_rows = []
@@ -206,18 +61,10 @@ def page(data, token, notice, query=""):
                 continue
             status = wheel_export.entry_status(x)
             entry_id = e(x.get("id", ""))
-            actions = ""
-            if not x.get("removed"):
-                for outcome in ("approved", "rejected"):
-                    actions += ("<button name='decision' value='" + outcome + "'>" + outcome.capitalize() + "</button>")
             game_rows.append(
                 "<tr><td>" + e(month) + "</td><td>" + e(x.get("game")) + "</td><td>" + e(x.get("user")) +
                 "</td><td>" + e(status) + (" (removed)" if x.get("removed") else "") +
-                "</td><td><form action='/review' method='post'>"
-                "<input type='hidden' name='token' value='" + e(token) + "'>"
-                "<input type='hidden' name='month' value='" + e(month) + "'>"
-                "<input type='hidden' name='entryId' value='" + entry_id + "'>"
-                + actions + "</form></td></tr>"
+                "</td><td><code>" + entry_id + "</code></td></tr>"
             )
     report = ops.reconcile(data)
     html_rows = "\n".join(viewer_rows)
@@ -248,24 +95,19 @@ article{background:white;border:1px solid #d5dfd5;border-radius:8px;padding:14px
 .warn{color:#9c3d1b}body{overflow-wrap:break-word}
 </style></head><body>
 <h1>🌿 Check-in administration</h1>
-<p><strong>OFFLINE SNAPSHOT ONLY</strong> · Edits are staged in memory and never touch Streamer.bot or Twitch.</p>
+<p><strong>Read-only snapshot</strong> · Use <code>!checkinadmin</code> and <code>!wheeladmin</code> in Twitch chat to make updates, including between streams.</p>
 <article>""" + e(notice) + """</article>
 <article><strong>Snapshot: </strong>""" + str(len(data["users"])) + """ viewers ·
 <strong>Wheel entries:</strong> """ + str(report["wheelEntryCount"]) + """ ·
 <strong>Reconciliation findings:</strong> <span class="warn">""" + str(len(report["findings"])) + """</span>
-<p>Review entries and viewer edits before exporting. Import requires a separate, explicit Streamer.bot action.</p>
-<form action="/save" method="post">
-<input type="hidden" name="token" value='""" + e(token) + """'>
-<button>Save staged JSON + SHA-256</button></form></article>
+</article>
 <h2>Viewer records</h2>""" + search_form + """<table><thead><tr><th>Viewer</th><th>Total · Streak</th><th>Credits</th></tr></thead><tbody>""" + html_rows + """</tbody></table>
-<h2>Game submissions</h2>""" + wheel_forms + """<table><thead><tr><th>Month</th><th>Game</th><th>Viewer</th><th>Status</th><th>Review</th></tr></thead><tbody>""" + games_html + """</tbody></table>
+<h2>Game submissions</h2>""" + wheel_forms + """<table><thead><tr><th>Month</th><th>Game</th><th>Viewer</th><th>Status</th><th>Entry ID</th></tr></thead><tbody>""" + games_html + """</tbody></table>
 <p><small>Local snapshot management only. Keep these exports private.</small></p></body></html>"""
 
 
 def serve(snapshot, output_dir, port):
-    baseline = ops.load_backup(snapshot)
-    # Edit and review handlers replace the contents from a private deep copy.
-    data = baseline.copy()
+    data = ops.load_backup(snapshot)
     token = secrets.token_urlsafe(32)
 
     class Handler(BaseHTTPRequestHandler):
@@ -304,31 +146,18 @@ def serve(snapshot, output_dir, port):
             if not secrets.compare_digest(provided, token):
                 self.respond(403, "Access denied", "text/plain")
                 return
-            def field(name):
-                return params.get(name, [""])[0]
+            if self.path != "/exportwheel":
+                self.respond(404, "Unknown action", "text/plain")
+                return
             try:
-                if self.path == "/edit":
-                    edit_user(data, field("userId"), int(field("total")), int(field("streak")))
-                    notice = "Viewer edit staged. Save to write a guarded edit file."
-                elif self.path == "/review":
-                    review_entry(data, field("month"), field("entryId"), field("decision"))
-                    notice = "Game review staged. Save to write a guarded edit file."
-                elif self.path == "/save":
-                    saved = export_snapshot(data, snapshot, output_dir, baseline=baseline)
-                    notice = "Saved edit file: " + str(saved) + ". Import it manually after another backup."
-                elif self.path == "/exportwheel":
-                    month = field("month")
-                    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
-                        raise ops.CheckinError("Invalid month")
-                    output = pathlib.Path(output_dir)
-                    output.mkdir(parents=True, exist_ok=True)
-                    target = output / ("wheel-" + month + "-" + secrets.token_hex(6) + ".csv")
-                    count = wheel_export.export(data, month, target)
-                    notice = f"Exported {count} approved games to {target}. Resolve pending reviews before spinning."
-                else:
-                    self.respond(404, "Unknown action", "text/plain")
-                    return
-                self.respond(200, page(data, token, notice))
+                month = params.get("month", [""])[0]
+                if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                    raise ops.CheckinError("Invalid month")
+                output = pathlib.Path(output_dir)
+                output.mkdir(parents=True, exist_ok=True)
+                target = output / ("wheel-" + month + "-" + secrets.token_hex(6) + ".csv")
+                count = wheel_export.export(data, month, target)
+                self.respond(200, page(data, token, f"Exported {count} approved games to {target}."))
             except (ops.CheckinError, ValueError, OSError) as exc:
                 self.respond(400, page(data, token, "ERROR: " + str(exc)))
 
@@ -337,7 +166,7 @@ def serve(snapshot, output_dir, port):
 
     server = HTTPServer(("127.0.0.1", port), Handler)
     print(f"Local-only admin dashboard: http://127.0.0.1:{port}/?token={token}", flush=True)
-    print("Snapshot edits are staged. Press Ctrl+C to stop; no live Streamer.bot connection.")
+    print("Read-only snapshot. Press Ctrl+C to stop.")
     try:
         server.serve_forever()
     finally:
@@ -347,7 +176,7 @@ def serve(snapshot, output_dir, port):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--backup", required=True, help="Path to verified snapshot JSON")
-    p.add_argument("--out-dir", default=".sandbox/staged", help="Private output folder")
+    p.add_argument("--out-dir", default=".sandbox/exports", help="Private output folder")
     p.add_argument("--port", type=int, default=8765)
     args = p.parse_args()
     if not 1024 <= args.port <= 65535:

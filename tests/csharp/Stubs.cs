@@ -73,7 +73,9 @@ public static class CPH {
         value=Args.ContainsKey(name) ? (T)Args[name] : default(T); return Args.ContainsKey(name);
     }
     public static TwitchUserInfo TwitchGetUserInfoById(string id) { return new TwitchUserInfo {UserId=id, UserName=id, IsModerator=id=="mod"}; }
-    public static TwitchUserInfo TwitchGetUserInfoByLogin(string name) { return null; }
+    public static TwitchUserInfo TwitchGetUserInfoByLogin(string name) {
+        return name == "alice" ? new TwitchUserInfo {UserId="123", UserName="alice"} : null;
+    }
     public static TwitchUserInfo TwitchGetBroadcaster() { return new TwitchUserInfo {UserId="broadcaster"}; }
 
     public static void SendMessage(string message) { Messages.Add(message); }

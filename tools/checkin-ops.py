@@ -41,7 +41,7 @@ USER_INTS = {
 USER_STRINGS = {"ci_badge", "ci_last_redemption_id", "ci_wheel_pending_json"}
 GLOBAL_INTS = {"ci_stream_id", "ci_stream_count", "ci_schema_version"}
 GLOBAL_LONGS = {"ci_last_checkin_at_ms"}
-GLOBAL_BOOLS = {"ci_wheel_legacy_migrated"}
+GLOBAL_BOOLS = {"ci_wheel_legacy_migrated", "ci_checkin_receipts_migrated"}
 MONTH_KEY = re.compile(r"ci_wheel_month_(\d{4})_(0[1-9]|1[0-2])$")
 VIEWER_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,30}$")
 

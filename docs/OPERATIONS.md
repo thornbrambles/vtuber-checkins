@@ -20,18 +20,14 @@ journal to bypass the guard. Back up and inspect malformed journals manually.
 
 `ci_checkin_receipts_month_YYYY_MM` maps completed redemption IDs to viewer IDs.
 Keep these receipts with backups even across month and stream boundaries. Keep the ci_checkin_rejected_* records too. They preserve cancellation decisions across retries. Export and
-import already include these string globals. Existing last-redemption markers and
-retained check-in audit events are also recognized for older records; redemptions
-whose historical IDs were never retained cannot be reconstructed automatically.
+import already include these globals. Run action 08 before enabling this version.
+It copies historical check-in audit IDs to receipts, preserves existing receipts,
+and reports the specific audit partition if it cannot complete. Resolve or restore
+that partition before retrying. Once migrated, check-ins consult receipts and the
+existing last-redemption marker. IDs never saved cannot be reconstructed.
 Successful counter recovery may omit the original celebration message; Twitch
 fulfillment can be retried without awarding attendance again. This handles ordered
 write failures in the shared queue, not corrupted storage or out-of-order disk flushes.
-
-The offline dashboard serializes requests so overlapping tabs cannot replace each
-other's edits. Zero totals explicitly export attendance `0` and an empty badge:
-the import action skips absent/null fields, so these values are necessary to clear
-existing records. Earned/spent credits and the independent redemption marker remain
-intact. Continue to import only while Twitch submissions are disabled.
 
 ### Offline runtime regression checks
 
@@ -66,7 +62,7 @@ are still required before installation.
 - ci_wheel_spin_result_YYYY_MM — authoritative saved result for each drawn month (persisted, immutable until broadcaster reset)
 - ci_wheel_spin_overlay_json — transient OBS wheel presentation data; expires after ~18 seconds
 - ci_wheel_spin_audit_json — draw/reset history
-- ci_wheel_spin_last_announced_id — guard against duplicate winner chat announcements
+- `revealAtMs` and `announced` on the saved spin result control the winner announcement. Replay and hide only change OBS presentation.
 - ci_events_month_YYYY_MM — check-in/admin/game event audit history (new events only)
 - ci_diagnostics_json, ci_reconciliation_json — last machine-readable health reports
 
@@ -116,7 +112,7 @@ a separately audited administrative policy.
 
 On the 1st of the month, the date-scoped ledger automatically switches to the new Eastern calendar month. The original month stays on each pending transaction and is used during recovery, even after midnight or daylight-saving changes. Incoming Twitch message IDs are checked against **all monthly partitions**, so a retried message cannot spend again after rollover.
 
-Set up `16-month-rollover.cs` as a local timed action on the shared **Blocking** queue, ideally daily at **00:10 Eastern** (also run once when enabling it). It recomputes an idempotent `ci_wheel_archive_YYYY_MM` JSON snapshot for the previous month, containing **only approved, non-removed games** plus counts of pending and rejected submissions. It does **not** silently pick a winner or interact with the OBS overlay. The moderator can export the approved month with `tools/export-wheel.py` for their preferred spinning tool. For example: `python tools/export-wheel.py backup.json 2026-11` after exporting a fresh backup. The script also accepts a single monthly JSON array or the `ci_wheel_archive_YYYY_MM` JSON object exported separately. It refuses to generate a final spin CSV while pending submissions remain unless explicitly overridden with `--allow-pending`. If a late moderation decision changes an older month, manually re-run the archival action with `targetMonth=YYYY-MM`.
+Live spins and dashboard CSV exports use the monthly ledger. For a standalone CSV, run `python tools/export-wheel.py backup.json 2026-11` against a fresh private backup. The exporter blocks final export while submissions are unfinished or unreviewed unless you explicitly use `--allow-pending`. If you need a separate archive for another tool, run `16-month-rollover.cs` manually on the shared **Blocking** queue. It rebuilds the previous month by default and accepts `targetMonth=YYYY-MM` for another past month. Refresh it if a moderator changes that month later.
 
 Do not draw winners while an archive still reports pending games. Month-end exports should be backed up with other `ci_` globals.
 
@@ -201,7 +197,12 @@ Start it with a **verified, private** export JSON. The dashboard binds only to `
 
     python tools/admin-dashboard.py --backup "C:/Users/USER/Documents/vtuber-checkins-backups/checkins-YYYYMMDD-HHMMSS-fff.json"
 
-Use **Save staged JSON + SHA-256** to write only the edits and the original values they depend on. With the bot idle and accounting triggers disabled, back up live state, copy the edit JSON and sidecar to the import action's expected location, and run dry-run. If a relevant live value changed, export again and restage the edit. Guarded edit files require explicit apply but do not require the full-restore overwrite switch. Keep these files private. The dashboard operates on exported data and never connects to Streamer.bot.
+The dashboard shows viewer counts, credit balances, game statuses and entry IDs.
+Use the CSV buttons to export a completed month. For corrections and game review,
+keep Streamer.bot running and connected to Twitch, and use `!checkinadmin` and
+`!wheeladmin` in the channel's chat while the stream is offline. Export a new
+backup and reopen the dashboard to view the updated records. Discard previous
+dashboard edit files and restage any needed changes through the commands.
 
 ## Diagnostics and reconciliation
 
@@ -272,6 +273,6 @@ Streamer.bot global-variable writes are independent. A journal helps recover
 interrupted wheel submissions, but cannot make cross-variable changes fully
 atomic. Audit history is month-partitioned JSON and begins only after this
 refactor; reconstructing pre-v5 streams requires existing aggregate counters.
-Monthly archives are **prepared for a separate spinning tool**; no winners are chosen by this project. The localhost dashboard operates on exported snapshots, not on live Streamer.bot state.
+Monthly archives are optional exports. Live spins use the current monthly ledger. The localhost dashboard operates on exported snapshots, not on live Streamer.bot state.
 The backup's user-variable inventory includes the known keys from this repo:
 custom per-user variables require explicitly extending the exporter/importer.

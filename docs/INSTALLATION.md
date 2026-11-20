@@ -11,8 +11,10 @@ Run diagnostics and the [acceptance checklist](STREAMERBOT-ACCEPTANCE.md) before
 enabling triggers. If a pending check-in is reported, follow the
 [recovery instructions](OPERATIONS.md#check-in-recovery-and-retry-receipts) first.
 Use the exact action name `CI - Start Stream` so a redemption can finish a saved
-stream transition before awarding attendance. Update the dashboard and the import
-action together so the importer recognizes the dashboard's guarded edit files.
+stream transition before awarding attendance. Run updated action 08 manually after
+backing up and before enabling check-ins. It migrates the old redemption receipts
+even when the wheel is already migrated. Update the dashboard and import action
+together. Use Twitch moderator commands for edits and the importer for recovery.
 
 **Upgrading from deployed v3?** Begin with [V3-MIGRATION-BACKUP-DEBUG.md](V3-MIGRATION-BACKUP-DEBUG.md). You can migrate directly from v3; export existing state before changing actions.
 
@@ -22,7 +24,7 @@ action together so the importer recognizes the dashboard's guarded edit files.
 
 **All commands and permissions:** [COMMANDS.md](COMMANDS.md).
 
-A local-only admin dashboard for private backup files is available at `tools/admin-dashboard.py`. It stages modifications into new importable JSON with checksums; it is **not directly connected to Streamer.bot**. Read [OPERATIONS.md](OPERATIONS.md) and [STREAMERBOT-ACCEPTANCE.md](STREAMERBOT-ACCEPTANCE.md) before using it.
+A local-only admin dashboard for private backup files is available at `tools/admin-dashboard.py`. It displays a read-only snapshot and exports approved games. With the bot connected, moderators can use `!checkinadmin` and `!wheeladmin` in the broadcaster’s Twitch chat even when the stream is offline. Read [OPERATIONS.md](OPERATIONS.md) and [STREAMERBOT-ACCEPTANCE.md](STREAMERBOT-ACCEPTANCE.md) before using it.
 
 This repository contains standalone Streamer.bot C# action bodies and an OBS HTML overlay. It is **not** an importable Streamer.bot package. Follow the steps in order. Back up Streamer.bot before changing an existing setup.
 

@@ -1,4 +1,4 @@
-"""Regression tests for monthly wheel policy and offline admin edits."""
+"""Regression tests for monthly wheel policy."""
 import importlib.util
 import json
 import pathlib
@@ -41,50 +41,6 @@ def fixture():
              "vars": {"ci_total": 10, "ci_wheel_earned": 1, "ci_wheel_claimed": 1}}
         ]
     }
-
-
-class DashboardTests(unittest.TestCase):
-    def test_review_and_keep_credit_spend(self):
-        data = fixture()
-        dashboard.review_entry(data, "2026-11", "entry-1", "rejected")
-        entries = json.loads(data["globals"]["ci_wheel_month_2026_11"])
-        self.assertEqual(entries[0]["status"], "rejected")
-        self.assertEqual(data["users"][0]["vars"]["ci_wheel_claimed"], 1)
-        self.assertIn("ci_wheel_audit_json", data["globals"])
-        dashboard.review_entry(data, "2026-11", "entry-1", "approved")
-        self.assertEqual(json.loads(data["globals"]["ci_wheel_month_2026_11"])[0]["status"], "approved")
-
-    def test_approved_duplicate_blocked(self):
-        data = fixture()
-        entries = json.loads(data["globals"]["ci_wheel_month_2026_11"])
-        entries[0]["game"] = "  GAME   TWO "
-        data["globals"]["ci_wheel_month_2026_11"] = json.dumps(entries)
-        with self.assertRaisesRegex(dashboard.ops.CheckinError, "already approved"):
-            dashboard.review_entry(data, "2026-11", "entry-1", "approved")
-
-    def test_viewer_edit_preserves_earned_credits_and_audit(self):
-        data = fixture()
-        dashboard.edit_user(data, "1234", 0, 0)
-        self.assertEqual(data["users"][0]["vars"]["ci_wheel_earned"], 5)
-        self.assertEqual(data["users"][0]["vars"]["ci_total"], 0)
-        self.assertTrue(any(k.startswith("ci_events_month_") for k in data["globals"]))
-
-    def test_snapshot_is_new_and_checksum_verifies(self):
-        data = fixture()
-        with tempfile.TemporaryDirectory() as temp:
-            source = pathlib.Path(temp) / "original.json"
-            source.write_text(json.dumps(data), encoding="utf-8")
-            dashboard.edit_user(data, "1234", 20, 1)
-            staged = dashboard.export_snapshot(data, source, pathlib.Path(temp) / "staged")
-            self.assertNotEqual(staged, source)
-            self.assertTrue(pathlib.Path(str(staged) + ".sha256").exists())
-            restored = json.loads(staged.read_text(encoding="utf-8"))
-            self.assertEqual(restored["format"], "vtuber-checkins-dashboard-edits")
-            self.assertEqual(len(restored["users"]), 1)
-            self.assertEqual(restored["expected"]["users"]["1234"]["ci_total"], 50)
-            self.assertNotIn("ci_wheel_month_2026_11", restored["globals"])
-            self.assertEqual(restored["users"][0]["vars"]["ci_total"], 20)
-            self.assertEqual(json.loads(source.read_text())["users"][0]["vars"]["ci_total"], 50)
 
 
 class MonthPolicyTests(unittest.TestCase):
