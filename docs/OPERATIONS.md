@@ -25,7 +25,7 @@ not have access to the Streamer.bot process; they operate on exported JSON files
 - ci_schema_version — data model revision, currently 5
 - ci_wheel_legacy_migrated — migration completion flag
 - ci_wheel_entries_json — legacy archive (read only after migration)
-- ci_wheel_month_YYYY_MM — JSON arrays of game submissions (including soft-deleted entries)
+- ci_wheel_month_YYYY_MM — JSON arrays of game submissions (including soft-deleted entries); these enforce the **three submissions per viewer per Eastern Time calendar month** limit
 - ci_wheel_audit_json — wheel moderator edits (rename/remove/restore)
 - ci_events_month_YYYY_MM — check-in/admin/game event audit history (new events only)
 - ci_diagnostics_json, ci_reconciliation_json — last machine-readable health reports
@@ -64,7 +64,7 @@ authority. Available subcommands:
 - !wheeladmin remove ID — soft-delete from public wheel; preserve historical entry and spent credit
 - !wheeladmin restore ID — restore a soft-deleted entry to current wheel
 
-This intentionally does **not** refund credits for game removals. Refunds need
+Soft-deleted entries still count toward the three-per-month limit; unused credits carry forward. This intentionally does **not** refund credits for game removals. Refunds need
 a separately audited administrative policy.
 
 ## Backups
