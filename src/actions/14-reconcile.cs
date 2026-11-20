@@ -44,7 +44,7 @@ public class CPHInline
 
         var countByUser=seen.Values.Where(x=>!String.IsNullOrWhiteSpace((string)x["userId"]))
             .GroupBy(x=>(string)x["userId"])
-            .ToDictionary(x=>x.Key,x=>x.Count());
+            .ToDictionary(x=>x.Key,x=>x.Select(y=>(string)y["slotId"] ?? (string)y["id"]).Distinct().Count());
         var totals=CPH.GetTwitchUsersVar<int>("ci_total",true)
             .ToDictionary(x=>x.UserId,x=>x.Value);
         var spent=CPH.GetTwitchUsersVar<int>("ci_wheel_claimed",true)
