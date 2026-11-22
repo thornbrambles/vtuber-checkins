@@ -42,6 +42,12 @@
   ],
   "commands": [
     {
+      "name": "!checkinhelp",
+      "access": "everyone",
+      "match": "exact",
+      "action": "19-viewer-help.cs"
+    },
+    {
       "name": "!checkins",
       "access": "everyone",
       "match": "exact",

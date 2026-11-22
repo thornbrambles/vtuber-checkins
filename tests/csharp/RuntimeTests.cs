@@ -253,10 +253,25 @@ public static class RuntimeTests
         Console.WriteLine("PASS replay and hide preserve the scheduled winner announcement");
     }
 
+    private static void ViewerHelp() {
+        Setup(); CPH.Globals.Clear(); CPH.Args.Clear();
+        CPH.Commands.Add(new CommandData {Enabled = true, Commands = new List<string> {"!CHECKINS", "!wheel", "!wheeladmin", "!unrelated"}});
+        CPH.Commands.Add(new CommandData {Enabled = false, Commands = new List<string> {"!addgame"}});
+        Assert(new Action19().Execute(), "viewer help failed off stream");
+        string reply = CPH.Messages.Single();
+        Assert(reply.Contains("!checkins") && reply.Contains("!wheel list") && reply.Contains("Channel Points"), "missing viewer help");
+        Assert(!reply.Contains("!addgame") && !reply.Contains("!checkinboard") &&
+            !reply.Contains("!wheeladmin") && !reply.Contains("!unrelated"), "advertised an unavailable or private command");
+        CPH.Commands[1].Enabled = true;
+        Assert(new Action19().Execute() && CPH.Messages.Last().Contains("!addgame <title>"), "newly enabled command was omitted");
+        Console.WriteLine("PASS viewer help lists only enabled public check-in commands");
+    }
+
     public static int Main() {
         CheckinRetries(); InterruptedCheckins(); ModerationDuplicates(); FrameworkDraw();
         StreamAndRejectionRegression(); WheelJournalRegression();
         OffStreamAdministration(); PendingTitleReservation(); ReplayPreservesAnnouncement();
+        ViewerHelp();
         return 0;
     }
 }

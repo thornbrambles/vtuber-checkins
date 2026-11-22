@@ -36,10 +36,12 @@ public static class CPH {
     public static List<string> Fulfilled = new List<string>();
     public static List<string> Canceled = new List<string>();
     public static List<string> Messages = new List<string>();
+    public static List<CommandData> Commands = new List<CommandData>();
     public static int FailAfterWrite = -1, Writes = 0;
     public static bool FulfillmentSucceeds = true;
     public static void Reset() {
         Globals.Clear(); Users.Clear(); Args.Clear(); Fulfilled.Clear(); Canceled.Clear(); Messages.Clear();
+        Commands.Clear();
         FailAfterWrite = -1; Writes = 0; FulfillmentSucceeds = true;
     }
     private static void BeforeWrite() {
@@ -86,5 +88,5 @@ public static class CPH {
     public static bool TwitchRedemptionCancel(string rewardId, string redemptionId) { Canceled.Add(redemptionId); return true; }
     public static Func<string, bool> ActionRunner;
     public static bool RunAction(string name, bool runImmediately=true) { return ActionRunner != null && ActionRunner(name); }
-    public static List<CommandData> GetCommands() { return new List<CommandData>(); }
+    public static List<CommandData> GetCommands() { return Commands; }
 }
