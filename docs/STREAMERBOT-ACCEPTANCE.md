@@ -8,9 +8,9 @@ and never run destructive tests on the actual viewer records.
 
 1. Use a disposable Streamer.bot data directory, a test broadcaster and test bot account.
 2. Configure the Channel Points reward **🌿 Stream Check-in** to target the exact reward ID.
-3. Install actions 01–16 from this PR and compile **each** in Streamer.bot.
+3. Install actions 01–19 and compile **each** in Streamer.bot.
 4. Put all runtime actions, reviewer actions, migration and archive in one Blocking queue.
-5. Register !checkins, !checkinboard, !wheel, !addgame, !wheeladmin, !checkindiag with matching permissions.
+5. Register the commands using [the access and matching settings](COMMANDS.md#access-and-matching-settings) and run the updated action 08 before enabling check-ins.
 6. Start a synthetic test stream or use the test channel to produce genuine Twitch events.
 7. Save a complete backup before test and after test; never import test data into production.
 
@@ -18,6 +18,7 @@ and never run destructive tests on the actual viewer records.
 
 | Scenario | How to run | Must verify |
 | --- | --- | --- |
+| Viewer command help | Type `!checkinhelp` as a viewer, then disable a viewer command and try again | One chat reply with the enabled viewer commands and the Channel Points reward; no moderator tools |
 | First legitimate redemption | Redeem Stream Check-in on test stream | ci_total +1; streak=1; Twitch fulfilled; exactly one chat message |
 | Duplicate within stream | Redeem again | no added count or credits; cancellation/refund attempt; mod warning if refund fails |
 | Redemption replay | Redeliver same redemption ID via test infrastructure | no extra count or duplicate chat message |

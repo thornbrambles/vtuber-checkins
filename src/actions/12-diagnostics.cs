@@ -87,7 +87,7 @@ public class CPHInline
         try
         {
             var configured=CPH.GetCommands();
-            string[] expected={"!checkins","!checkinboard","!wheel","!addgame","!checkinadmin","!wheeladmin","!spinwheel","!checkindiag"};
+            string[] expected={"!checkinhelp","!checkins","!checkinboard","!wheel","!addgame","!checkinadmin","!wheeladmin","!spinwheel","!checkindiag"};
             foreach(string phrase in expected)
             {
                 var matching=configured.Where(cmd=>cmd!=null &&

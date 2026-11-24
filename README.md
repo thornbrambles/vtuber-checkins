@@ -28,6 +28,8 @@ the Twitch/OBS acceptance checklist before using the changes live.
 
 ## Viewer commands
 
+Type `!checkinhelp` in Twitch chat to see the enabled viewer commands and how to check in.
+
 See [the full command catalog](docs/COMMANDS.md) for usage, permissions, examples and effects.
 
 `!checkins` shows attendance and credits. `!addgame Game Title` spends one earned credit and queues a game for moderator approval (maximum three per viewer per Eastern calendar month). `!wheel` checks credits and submitted slots; `!wheel list` shows only approved games. Rejected titles can be replaced without another credit or monthly slot in the same month.

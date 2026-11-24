@@ -32,6 +32,7 @@ If cancellation fails, the viewer is asked to contact a moderator instead of bei
 
 | Command | Access | Action | Effect |
 | --- | --- | --- | --- |
+| `!checkinhelp` | Everyone | `19-viewer-help.cs` | Lists the enabled viewer commands for this project and explains how to redeem a check-in |
 | `!checkins` | Everyone | `04-mycheckins.cs` | Your lifetime total, streak, all-time rank, milestone badge, whether you checked in this stream, next milestone and available wheel credits |
 | `!checkinboard` | Everyone | `03-leaderboard.cs` | Top five viewers by lifetime check-ins; chat message only |
 | `!wheel` | Everyone | `07-wheel-commands.cs` | Earned/used/available game submission credits |
@@ -83,6 +84,7 @@ Install `17-wheel-spin.cs` as **CI - Spin Wheel** and `18-wheel-reveal.cs` as **
 | --- | --- | --- |
 | `!checkins` | Exact | Everyone |
 | `!checkinboard` | Exact | Everyone |
+| `!checkinhelp` | Exact | Everyone |
 | `!wheel` | Starts With | Everyone |
 | `!addgame` | Starts With | Everyone |
 | `!checkinadmin` | Starts With | Moderator + broadcaster |

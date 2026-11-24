@@ -42,7 +42,7 @@ Make a Streamer.bot backup/export, and record any existing persisted user/global
 
 ## 2. Create the blocking queue
 
-In Streamer.bot go to Actions & Queues, create a queue called Community Checkins and set it to Blocking. Assign **all seven runtime** actions below to that same queue. This serializes check-ins, admin edits, wheel submissions and overlay-state writes.
+In Streamer.bot go to Actions & Queues, create a queue called Community Checkins and set it to Blocking. Assign the runtime actions below to that same queue. This serializes check-ins, admin edits, wheel submissions and overlay-state writes.
 
 ## 3. Create the Channel Points reward
 
@@ -69,6 +69,7 @@ Under Actions & Queues > Actions, create each action below, assigned to the Comm
 | CI - Viewer Check-in | src/actions/02-checkin.cs | Twitch > Channel Reward > Reward Redemption (select 🌿 Stream Check-in) |
 | CI - Leaderboard | src/actions/03-leaderboard.cs | Core > Commands > Command Triggered (!checkinboard) |
 | CI - My Check-ins | src/actions/04-mycheckins.cs | Core > Commands > Command Triggered (!checkins) |
+| CI - Viewer Help | src/actions/19-viewer-help.cs | Core > Commands > Command Triggered (!checkinhelp) |
 | CI - Admin Check-ins | src/actions/05-admin-checkins.cs | Core > Commands > Command Triggered (!checkinadmin) |
 | CI - Game Submit | src/actions/06-game-submit.cs | Core > Commands > Command Triggered (!addgame) |
 | CI - Wheel Commands | src/actions/07-wheel-commands.cs | Core > Commands > Command Triggered (!wheel) |
@@ -95,6 +96,7 @@ In Commands, create and enable these exact names, selecting the intended action 
 | --- | --- | --- | --- |
 | !checkins | Exact / Basic | Everyone | User's total, streak, rank, badge, wheel credits |
 | !checkinboard | Exact / Basic | Everyone | Top five lifetime attendance |
+| !checkinhelp | Exact / Basic | Everyone | List enabled viewer commands and explain the Channel Points check-in |
 | !checkinadmin | Starts With / Basic | Moderator + broadcaster | Inspect/edit/reset someone else's values |
 | !addgame | Starts With / Basic | Everyone | Submit title after command |
 | !wheel | Starts With / Basic | Everyone | Credits or list subcommand |
@@ -109,6 +111,8 @@ Command settings are independent from action trigger creation. For each command 
 **Permissions:** Restrict !checkinadmin to Twitch moderators and the broadcaster in the command's permissions editor. The C# action also rejects actors who are not broadcaster or moderator. Do not leave an empty allow-list if your version treats that as Everyone.
 
 ### Viewer commands
+
+- !checkinhelp — quick help for the enabled check-in and game wheel commands
 
 - !checkins — personal total, consecutive streams, rank, badge, current attendance, and available game credits
 - !checkinboard — top five lifetime attendance
