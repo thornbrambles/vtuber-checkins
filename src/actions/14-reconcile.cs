@@ -42,7 +42,8 @@ public class CPHInline
             }
         }
 
-        var countByUser=seen.Values.Where(x=>!String.IsNullOrWhiteSpace((string)x["userId"]))
+        // Moderator-added games ("admin-added", see 13-wheel-admin.cs) use no viewer credit.
+        var countByUser=seen.Values.Where(x=>!String.IsNullOrWhiteSpace((string)x["userId"]) && (string)x["userId"]!="admin-added")
             .GroupBy(x=>(string)x["userId"])
             .ToDictionary(x=>x.Key,x=>x.Select(y=>(string)y["slotId"] ?? (string)y["id"]).Distinct().Count());
         var totals=CPH.GetTwitchUsersVar<int>("ci_total",true)

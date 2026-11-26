@@ -133,6 +133,26 @@ public static class RuntimeTests
         }
         Console.WriteLine("PASS duplicate rename/restore rejected, distinct titles accepted");
     }
+    private static void AdminAdd() {
+        Setup(); CPH.Args["userId"] = "mod"; CPH.Args["userName"] = "moderator";
+        CPH.Globals["ci_wheel_legacy_migrated"] = true;
+        string key = "ci_wheel_month_2026_10";
+        CPH.Args["rawInput"] = "add @alice 2026-10 Old   Favourite";
+        Assert(new Action13().Execute(), "admin add failed");
+        var entry = JArray.Parse(CPH.GetGlobalVar<string>(key)).Single();
+        Assert((string)entry["status"] == "approved" && (string)entry["userId"] == "admin-added" &&
+            (string)entry["user"] == "alice" && (string)entry["game"] == "Old Favourite", "admin add saved wrong entry");
+        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_wheel_claimed") == 0, "admin add spent a viewer credit");
+        Assert(JArray.Parse(CPH.GetGlobalVar<string>("ci_wheel_audit_json")).Count == 1, "admin add not audited");
+        CPH.Args["rawInput"] = "add 2026-10 old favourite";
+        Assert(new Action13().Execute() && JArray.Parse(CPH.GetGlobalVar<string>(key)).Count == 1, "duplicate admin add allowed");
+        CPH.Args["rawInput"] = "add 2026-13 Bad Month";
+        Assert(new Action13().Execute() && !CPH.Globals.ContainsKey("ci_wheel_month_2026_13"), "invalid month accepted");
+        CPH.Args["rawInput"] = "approve " + (string)entry["id"];
+        Assert(new Action13().Execute(), "admin-added ID not usable by other subcommands");
+        Assert(new Action14().Execute(), "reconcile flagged an admin-added game");
+        Console.WriteLine("PASS moderator add creates an approved, audited, credit-free game");
+    }
     private static void FrameworkDraw() {
         var draw = typeof(Action17).GetMethod("DrawIndex", BindingFlags.NonPublic | BindingFlags.Static);
         foreach (int count in new [] {1, 2, 3, 7, 200}) {
@@ -268,7 +288,7 @@ public static class RuntimeTests
     }
 
     public static int Main() {
-        CheckinRetries(); InterruptedCheckins(); ModerationDuplicates(); FrameworkDraw();
+        CheckinRetries(); InterruptedCheckins(); ModerationDuplicates(); AdminAdd(); FrameworkDraw();
         StreamAndRejectionRegression(); WheelJournalRegression();
         OffStreamAdministration(); PendingTitleReservation(); ReplayPreservesAnnouncement();
         ViewerHelp();

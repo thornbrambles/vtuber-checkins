@@ -76,7 +76,7 @@ Install `17-wheel-spin.cs` as **CI - Spin Wheel** and `18-wheel-reveal.cs` as **
 
 ## Wheel moderator commands
 
-`!wheeladmin` (Starts With; Moderator/broadcaster only) is implemented by `13-wheel-admin.cs`. Subcommands: `!wheeladmin list [YYYY-MM]`, **`!wheeladmin approve ENTRY_ID`**, **`!wheeladmin reject ENTRY_ID`**, `!wheeladmin rename ENTRY_ID New Title`, `!wheeladmin remove ENTRY_ID`, `!wheeladmin restore ENTRY_ID`. A rejected game can be replaced during the **same calendar month** with another `!addgame Title` without a new credit or monthly slot. Removals are soft-deletes and do not refund credits. All edits are recorded in `ci_wheel_audit_json`.
+`!wheeladmin` (Starts With; Moderator/broadcaster only) is implemented by `13-wheel-admin.cs`. Subcommands: `!wheeladmin list [YYYY-MM]`, `!wheeladmin add [@viewer] YYYY-MM Game Title`, **`!wheeladmin approve ENTRY_ID`**, **`!wheeladmin reject ENTRY_ID`**, `!wheeladmin rename ENTRY_ID New Title`, `!wheeladmin remove ENTRY_ID`, `!wheeladmin restore ENTRY_ID`. A rejected game can be replaced during the **same calendar month** with another `!addgame Title` without a new credit or monthly slot. Removals are soft-deletes and do not refund credits. `add` puts an already-approved game on that month's wheel, for games collected before the bot (for example `!wheeladmin add @alice 2026-10 Hades`). The `@viewer` is optional and only shown as the submitter; it uses none of their credits or monthly slots. All edits are recorded in `ci_wheel_audit_json`.
 
 ## Access and matching settings
 
