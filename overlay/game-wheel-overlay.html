@@ -20,7 +20,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent
 #winner-label{font-size:16px;color:#f5d995;font-weight:850;text-transform:uppercase;letter-spacing:2.5px}
 #winner-game{font-weight:900;font-size:clamp(28px,3.6vw,58px);margin:12px 0;overflow-wrap:anywhere}
 #winner-user{font-size:21px;color:#bce4c1}
-#status{position:absolute;bottom:10px;left:10px;opacity:0;font-size:12px}
+#status{position:absolute;bottom:10px;left:10px;opacity:1;font-size:12px;color:#d1ddd5} /* set opacity:0 to hide troubleshooting text */
 </style>
 </head><body>
 <section id="stage">
@@ -104,7 +104,7 @@ function poll(){
 }
 function connect(){
   socket=new WebSocket(WS_URL);
-  socket.onopen=()=>{requestPending=false;poll()};
+  socket.onopen=()=>{$("status").textContent="Connected";requestPending=false;poll()};
   socket.onmessage=event=>{
     let m;try{m=JSON.parse(event.data)}catch(_){return}
     if(m.id!==REQUEST_ID)return;requestPending=false;
@@ -112,7 +112,7 @@ function connect(){
     try{accept(typeof m.variable.value==="string"?JSON.parse(m.variable.value):m.variable.value)}
     catch(e){$("status").textContent="Wheel state error: "+e.message}
   };
-  socket.onclose=()=>{requestPending=false;hide();lastEvent="";setTimeout(connect,3000)};
+  socket.onclose=()=>{$("status").textContent="Disconnected; retrying";requestPending=false;hide();lastEvent="";setTimeout(connect,3000)};
   socket.onerror=()=>{$("status").textContent="WebSocket error"};
 }
 setInterval(()=>{if(requestPending&&Date.now()-requestAt>2500)requestPending=false;poll()},650);
