@@ -52,6 +52,7 @@ The only admin command is `!checkinadmin`, with these subcommands. Configure **S
 | `!checkinadmin add @viewer 5` | Increase lifetime total by five |
 | `!checkinadmin remove @viewer 3` | Reduce lifetime total by three (floor of zero) |
 | `!checkinadmin streak @viewer 10` | Set a viewer's streak to ten |
+| `!checkinadmin test` | Show the check-in overlay for 60 seconds with an "Overlay test" pop-up. No counts change; the next real check-in replaces it |
 | `!checkinadmin reset @viewer` | Reset check-in total, streak and current attendance, but **preserve earned credits, used credits and historical game entries**; no second Channel Points redemption in the same stream |
 
 All the admin edits are logged. Manually increasing totals can unlock additional lifetime wheel entitlements when crossing a new high-water milestone; decreasing and increasing back to previous totals won't issue extra entitlements.
@@ -65,7 +66,9 @@ All the admin edits are logged. Manually increasing totals can unlock additional
 | `!spinwheel` | Spin the previous month’s approved game submissions |
 | `!spinwheel 2026-10` | Spin the specified **past** month |
 | `!spinwheel replay 2026-10` | Replay the existing winner without a new selection or chat announcement |
+| `!spinwheel show` | Show last month's saved result again (same as `replay` for last month); `!spinwheel show 2026-10` for another month |
 | `!spinwheel hide` | Hide the wheel immediately, without altering the draw |
+| `!spinwheel test` | Spin six sample games on the overlay to check OBS. Nothing is saved, drawn for real or announced |
 | `!spinwheel reset 2026-10 RESET-2026-10` | **Broadcaster only**: retain an audit event, clear the saved draw and allow a new spin |
 
 Install `17-wheel-spin.cs` as **CI - Spin Wheel** and `18-wheel-reveal.cs` as **CI - Wheel Reveal** with a local timed trigger every ~2 seconds. The latter posts the winning game after the animation, not before it. The wheel overlay is separate from check-in OBS graphics.

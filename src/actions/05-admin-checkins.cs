@@ -48,6 +48,8 @@ public class CPHInline
         string raw = "";
         CPH.TryGetArg("rawInput", out raw);
         string[] words = (raw ?? "").Trim().Split(new [] {' '}, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 1 && words[0].Equals("test", StringComparison.OrdinalIgnoreCase))
+            return OverlayTest();
         if (words.Length < 2)
         {
             Usage();
@@ -179,9 +181,27 @@ public class CPHInline
         return result;
     }
 
+    // Shows the check-in overlay as if someone just checked in. Saves no counts;
+    // the next real check-in or admin edit rewrites the overlay state.
+    private bool OverlayTest()
+    {
+        JObject state;
+        try { state = JObject.Parse(CPH.GetGlobalVar<string>("ci_overlay_json", true) ?? "{}"); }
+        catch (Exception ex) { CPH.LogError("Overlay test: ci_overlay_json is invalid: " + ex.Message); return false; }
+        state["eventId"] = "test-" + Guid.NewGuid().ToString("N");
+        state["latest"] = "Overlay test";
+        state["milestone"] = "";
+        state["total"] = 0;
+        state["streak"] = 0;
+        state["lastCheckinAtMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        CPH.SetGlobalVar("ci_overlay_json", state.ToString(Formatting.None), true);
+        CPH.SendMessage("Check-in overlay test sent: it should show for 60 seconds. No counts were changed.");
+        return true;
+    }
+
     private void Usage()
     {
-        CPH.SendMessage("Admin syntax: !checkinadmin view|reset @viewer OR !checkinadmin set|add|remove|streak @viewer number");
+        CPH.SendMessage("Admin syntax: !checkinadmin view|reset @viewer OR !checkinadmin set|add|remove|streak @viewer number OR !checkinadmin test");
     }
 
     private void Publish(int streamId)

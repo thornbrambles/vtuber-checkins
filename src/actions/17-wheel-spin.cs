@@ -82,6 +82,19 @@ public class CPHInline
             return true;
         }
 
+        if (args.Length > 0 && args[0].Equals("test", StringComparison.OrdinalIgnoreCase))
+        {
+            if (args.Length != 1) { Usage(); return true; }
+            // Sample spin to check the OBS source end to end. Nothing is saved, drawn for real or announced.
+            var sample = new[] {"Test Game A", "Test Game B", "Test Game C", "Test Game D", "Test Game E", "Test Game F"}
+                .Select((game, i) => new Choice {id = "test-" + i, game = game, user = "Test viewer", userId = "test"}).ToList();
+            int pick = DrawIndex(sample.Count);
+            Publish(new Result {spinId = "test", month = defaultMonth, selectedIndex = pick,
+                                winner = sample[pick], choices = sample}, now);
+            CPH.SendMessage("🎡 Test spin on the wheel overlay. Nothing is saved. Use !spinwheel hide to clear it.");
+            return true;
+        }
+
         if (args.Length > 0 && args[0].Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
             // Irreversible operation requires an EXACT confirmation and broadcaster identity.
@@ -120,8 +133,10 @@ public class CPHInline
             catch (Exception ex) { CPH.LogError("Spin reset failed: " + ex.Message); return false; }
         }
 
-        bool replay = args.Length > 0 && args[0].Equals("replay", StringComparison.OrdinalIgnoreCase);
-        string month = replay ? (args.Length == 2 ? args[1] : "") :
+        bool show = args.Length > 0 && args[0].Equals("show", StringComparison.OrdinalIgnoreCase);
+        bool replay = show || (args.Length > 0 && args[0].Equals("replay", StringComparison.OrdinalIgnoreCase));
+        // "show" is replay that defaults to last month.
+        string month = replay ? (args.Length == 2 ? args[1] : show && args.Length == 1 ? defaultMonth : "") :
             (args.Length == 0 ? defaultMonth : args.Length == 1 ? args[0] : "");
         if (!ValidPastMonth(month, currentMonth)) { Usage(); return true; }
 
@@ -289,6 +304,6 @@ public class CPHInline
     }
     private void Usage()
     {
-        CPH.SendMessage("Use !spinwheel [past YYYY-MM], !spinwheel replay YYYY-MM, !spinwheel hide. Broadcaster reset: !spinwheel reset YYYY-MM RESET-YYYY-MM");
+        CPH.SendMessage("Use !spinwheel [past YYYY-MM], !spinwheel show [YYYY-MM], !spinwheel hide, !spinwheel test. Broadcaster reset: !spinwheel reset YYYY-MM RESET-YYYY-MM");
     }
 }
