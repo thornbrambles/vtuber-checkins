@@ -36,7 +36,7 @@ See [the full command catalog](docs/COMMANDS.md) for usage, permissions, example
 
 ## Admin commands
 
-`!checkinadmin view @user`, `set @user N`, `add @user N`, `remove @user N`, `streak @user N`, and `reset @user`. `!wheeladmin approve ID` / `reject ID` review game submissions; rename, remove and restore are also available. `!spinwheel` starts the prior month’s draw for moderators/broadcaster; a separate OBS overlay animates the saved result. Restrict these commands to Twitch moderators and the broadcaster.
+`!checkinadmin view @user`, `set @user N`, `add @user N`, `remove @user N`, `streak @user N`, and `reset @user`. `!wheeladmin approve ID` / `reject ID` review game submissions; `add [@user] YYYY-MM Title` adds a game collected before the bot; rename, remove and restore are also available. `!spinwheel` starts the prior month’s draw for moderators/broadcaster; a separate OBS overlay animates the saved result. Restrict these commands to Twitch moderators and the broadcaster.
 
 ## v3 migration, backup and offline debug
 

@@ -8,8 +8,10 @@ using System.Text.RegularExpressions;
 public class CPHInline
 {
     // Moderator/broadcaster ONLY, also restrict command permissions in UI.
-    // !wheeladmin list [YYYY-MM] | approve ID | reject ID | rename ID New Title | remove ID | restore ID
+    // !wheeladmin list [YYYY-MM] | add [@user] YYYY-MM Title | approve ID | reject ID | rename ID New Title | remove ID | restore ID
     // Existing entries are NEVER deleted; removed entries retain their credit spend.
+    // Owner of moderator-added games: matches no viewer, so no credit or monthly slot is used.
+    public const string AdminUserId="admin-added";
     private class Entry {
         public string id {get;set;}
         public string userId {get;set;}
@@ -60,6 +62,7 @@ public class CPHInline
             foreach(var e in entries) CPH.LogInfo($"WHEEL {month} id={e.id} game={e.game} user={e.user} date={e.date} status={e.status??"approved"} removed={e.removed} replacedBy={e.replacedBy}");
             return true;
         }
+        if (op=="add") return Add(parts,actorId,actor);
         if (!(op=="remove"||op=="restore"||op=="rename"||op=="approve"||op=="reject") || parts.Length<(op=="rename"?3:2))
         {Usage();return true;}
         string target=parts[1];
@@ -85,13 +88,8 @@ public class CPHInline
             item=match;found=list;foundKey=v.VariableName;
         }
         if(item==null) { CPH.SendMessage("Wheel entry ID not found.");return true; }
-        // Validate the audit ledger BEFORE modifying the entry. A corrupt audit
-        // trail must not allow silent wheel changes.
-        string auditKey="ci_wheel_audit_json";
-        var auditText=CPH.GetGlobalVar<string>(auditKey,true);
-        JArray audit;
-        try { audit=String.IsNullOrWhiteSpace(auditText)?new JArray():JArray.Parse(auditText); }
-        catch(Exception ex) {CPH.LogError("Wheel admin refused: audit JSON invalid: "+ex.Message);return false;}
+        var audit=LoadAudit();
+        if(audit==null) return false;
         string before=item.game;
         bool priorRemoved=item.removed;
         string priorStatus=item.status;
@@ -143,7 +141,7 @@ public class CPHInline
             before,after=item.game,removedBefore=priorRemoved,removedAfter=item.removed,
             statusBefore=priorStatus,statusAfter=item.status
         }));
-        CPH.SetGlobalVar(auditKey,audit.ToString(Formatting.None),true);
+        CPH.SetGlobalVar(AuditKey,audit.ToString(Formatting.None),true);
         CPH.LogInfo($"WHEELADMIN operation={op} actor={actor}({actorId}) entry={target} {before} -> {item.game}");
         if(op=="reject")
             CPH.SendMessage($"@{item.user}, '{item.game}' wasn't approved. Use !addgame New Title to replace it this month. No extra credit needed.");
@@ -152,6 +150,51 @@ public class CPHInline
         else
             CPH.SendMessage($"Wheel entry {target}: {op} done. No credits refunded.");
         return true;
+    }
+    // Adds an already-approved game, e.g. one collected before the bot existed.
+    private bool Add(string[] parts,string actorId,string actor) {
+        int i=1;
+        string who="";
+        if(parts.Length>i && parts[i].StartsWith("@")) who=parts[i++].Substring(1);
+        if(parts.Length<i+2 || !ValidMonth(parts[i]) ||
+           (who!="" && !Regex.IsMatch(who,@"^[A-Za-z0-9_]{1,25}$"))) {Usage();return true;}
+        string month=parts[i];
+        string title=String.Join(" ",parts.Skip(i+1));
+        if(title.Length<2 || title.Length>100 || title.Any(char.IsControl)) {
+            CPH.SendMessage("Game title must contain 2-100 characters.");return true;
+        }
+        var entries=Load(month);
+        if(entries==null) return false;
+        var audit=LoadAudit();
+        if(audit==null) return false;
+        var now=DateTimeOffset.UtcNow;
+        var entry=new Entry {
+            id=Guid.NewGuid().ToString("N"), userId=AdminUserId, user=who, game=title,
+            date=EasternTime(now).ToString("yyyy-MM-dd"), month=month, utc=now.ToString("o"),
+            status="approved"
+        };
+        entry.slotId=entry.id;
+        if(HasApprovedDuplicate(entries,entry,title)) {
+            CPH.SendMessage("That game is already approved for "+month+".");return true;
+        }
+        entries.Add(entry);
+        CPH.SetGlobalVar("ci_wheel_month_"+month.Replace('-','_'),JsonConvert.SerializeObject(entries),true);
+        audit.Add(JObject.FromObject(new {
+            id=Guid.NewGuid().ToString("N"), atUtc=now.ToString("o"), actorId, actor,
+            operation="add", entryId=entry.id, month, before=(string)null, after=title,
+            removedBefore=false, removedAfter=false, statusBefore=(string)null, statusAfter="approved"
+        }));
+        CPH.SetGlobalVar(AuditKey,audit.ToString(Formatting.None),true);
+        CPH.LogInfo($"WHEELADMIN operation=add actor={actor}({actorId}) entry={entry.id} month={month} game={title} credit={who}");
+        CPH.SendMessage($"🎮 '{title}' added to the {month} wheel{(who==""?"":" for "+who)} (ID {entry.id}). No credits used.");
+        return true;
+    }
+    private const string AuditKey="ci_wheel_audit_json";
+    // Validate the audit ledger BEFORE any change: a corrupt trail must not allow silent edits.
+    private JArray LoadAudit() {
+        var auditText=CPH.GetGlobalVar<string>(AuditKey,true);
+        try { return String.IsNullOrWhiteSpace(auditText)?new JArray():JArray.Parse(auditText); }
+        catch(Exception ex) {CPH.LogError("Wheel admin refused: audit JSON invalid: "+ex.Message);return null;}
     }
     private static bool IsApproved(Entry entry) {
         return String.IsNullOrWhiteSpace(entry.status) || entry.status == "approved";
@@ -177,5 +220,5 @@ public class CPHInline
         try { return TimeZoneInfo.ConvertTime(utc,TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time")); }
         catch(TimeZoneNotFoundException) {return TimeZoneInfo.ConvertTime(utc,TimeZoneInfo.FindSystemTimeZoneById("America/New_York"));}
     }
-    private void Usage() {CPH.SendMessage("!wheeladmin list [YYYY-MM] | approve ID | reject ID | rename ID Title | remove ID | restore ID");}
+    private void Usage() {CPH.SendMessage("!wheeladmin list [YYYY-MM] | add [@user] YYYY-MM Title | approve ID | reject ID | rename ID Title | remove ID | restore ID");}
 }

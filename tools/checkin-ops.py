@@ -148,13 +148,17 @@ def wheel_entries(globals_):
     return list(all_entries.values()), problems
 
 
+# Owner of moderator-added games (13-wheel-admin.cs): uses no viewer credit or slot.
+ADMIN_USER_ID = "admin-added"
+
+
 def reconcile(data):
     """Read-only consistency report. This does not repair or edit any state."""
     users = data["users"]
     globals_ = data["globals"]
     entries, findings = wheel_entries(globals_)
     slots = {(str(entry.get("userId")), str(entry.get("slotId") or entry.get("id")))
-             for entry in entries if entry.get("userId")}
+             for entry in entries if entry.get("userId") and entry.get("userId") != ADMIN_USER_ID}
     counts = Counter(uid for uid, slot in slots)
     # An older ledger entry without status is approved. Rejected/replaced
     # records still consume one historical slot, not an extra credit.
