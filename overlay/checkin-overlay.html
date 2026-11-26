@@ -99,9 +99,15 @@ function replyProblem(m, requestId, variable){
     return "Unexpected Streamer.bot reply: "+JSON.stringify(m).slice(0,160);
   }
   if(m.status!=="ok") return "Streamer.bot refused the request: "+(m.error||m.status||"no reason given")+". Is Streamer.bot up to date?";
-  if(!m.variable) return "Connected, but "+variable+" is not saved yet.";
+  if(replyValue(m,variable.split(" ")[0])===undefined) return "Connected, but no "+variable+" in reply: "+JSON.stringify(m).slice(0,160);
   return "";
 }
+// Streamer.bot versions differ in where GetGlobal puts the value.
+function replyValue(m, name){
+  const v=m.variable!==undefined?m.variable:m.variables&&m.variables[name]!==undefined?m.variables[name]:m;
+  return v&&typeof v==="object"&&"value" in v?v.value:undefined;
+}
+
 function connect() {
   try {socket=new WebSocket(WS_URL)} catch(e) { $('status').textContent='Invalid WebSocket URL'; setTimeout(connect,3000);return; }
   socket.onopen=()=>{$('status').textContent='Connected';ready=false;pending=false;poll();};
@@ -113,7 +119,8 @@ function connect() {
     pending=false;
     if(problem){$('status').textContent=problem;return;}
     $('status').textContent='Connected · data received '+new Date().toLocaleTimeString();
-    try { render(typeof response.variable.value==='string' ? JSON.parse(response.variable.value) : response.variable.value); }
+    const value=replyValue(response,'ci_overlay_json');
+    try { render(typeof value==='string' ? JSON.parse(value) : value); }
     catch(e){ $('status').textContent='Bad overlay JSON: '+e.message; }
   };
   socket.onclose=()=>{$('status').textContent='Disconnected; retrying';pending=false;setTimeout(connect,3000)};
