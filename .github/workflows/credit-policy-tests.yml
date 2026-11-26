@@ -25,7 +25,7 @@ jobs:
       - name: Run policy, backup, reconciliation and sandbox tests
         run: python -m unittest discover -s tests -v
       - name: Validate actual OBS wheel animation script (Node built-in test runner)
-        run: node --test tests/test-wheel-overlay.mjs
+        run: node --test tests/test-wheel-overlay.mjs tests/test-live-dashboard.mjs
 
   csharp-compile:
     runs-on: windows-latest

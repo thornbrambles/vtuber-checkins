@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Grove · Live Admin</title>
+<style>
+:root{color-scheme:dark;--bg:#0f1d21;--panel:#152a2f;--border:#2c4a44;--mint:#b9e6bd;--muted:#9fb7b0;--gold:#ffde89;--bad:#f2a3a3}
+*{box-sizing:border-box}
+body{margin:0;padding:24px 32px 48px;background:var(--bg);color:#eef6f0;font:14px/1.45 Inter,"Segoe UI",Arial,sans-serif}
+header{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+h1{margin:0;font-size:24px}
+h2{margin:0 0 12px;font-size:18px;color:var(--mint)}
+#status{color:var(--muted)}
+#status.ok{color:var(--mint)}
+.note{color:var(--muted);max-width:900px}
+section{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-top:18px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.6px}
+td.num{font-variant-numeric:tabular-nums}
+td.actions{white-space:nowrap;text-align:right}
+code{color:var(--muted);font-size:12px}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;border:1px solid var(--border)}
+.pill.approved{color:var(--mint)}.pill.pending{color:var(--gold)}.pill.rejected,.pill.removed,.pill.replaced{color:var(--bad)}
+input,select,button{font:inherit;color:inherit;background:#0c181b;border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+button{cursor:pointer;margin-left:4px}
+button:hover,button:focus-visible{border-color:var(--mint)}
+button:disabled{opacity:.5;cursor:default}
+#log{margin-top:18px;color:var(--muted);white-space:pre-line}
+.empty{color:var(--muted);padding:10px 8px}
+</style>
+</head>
+<body>
+<header><h1>🌿 The Grove · Live Admin</h1><span id="status" role="status">Connecting to Streamer.bot…</span></header>
+<p class="note">Changes here run the same Streamer.bot actions as <code>!checkinadmin</code> and <code>!wheeladmin</code>, as the broadcaster, so all their checks and the audit log still apply. Their replies still post in Twitch chat. Only open this on the PC running Streamer.bot, and keep its WebSocket server (port 8080) local-only.</p>
+
+<section aria-labelledby="wheel-h">
+  <h2 id="wheel-h">Game wheel</h2>
+  <div class="row"><label>Month <select id="month"></select></label><span id="wheelSummary" class="note"></span></div>
+  <table><thead><tr><th>Game</th><th>Submitted by</th><th>Status</th><th>ID</th><th></th></tr></thead><tbody id="wheelRows"></tbody></table>
+  <form id="addGame" class="row">
+    <strong>Add an approved game</strong>
+    <label>Month <input id="addMonth" placeholder="YYYY-MM" pattern="\d{4}-(0[1-9]|1[0-2])" required size="8"></label>
+    <label>Viewer <input id="addUser" placeholder="optional" pattern="@?[A-Za-z0-9_]{1,25}" size="14"></label>
+    <label>Title <input id="addTitle" minlength="2" maxlength="100" required size="28"></label>
+    <button>Add game</button>
+  </form>
+  <p class="note">!spinwheel draws from last month, so add older games under last month to include them in the next spin. Added games use none of the viewer's credits.</p>
+</section>
+
+<section aria-labelledby="viewers-h">
+  <h2 id="viewers-h">Viewers</h2>
+  <input id="search" type="search" placeholder="Search viewers" aria-label="Search viewers">
+  <table><thead><tr><th>Viewer</th><th>Check-ins</th><th>Streak</th><th>Credits left</th><th></th></tr></thead><tbody id="viewerRows"></tbody></table>
+</section>
+
+<div id="log" aria-live="polite"></div>
+
+<script>
+"use strict";
+// Same private local Streamer.bot WebSocket as the overlays.
+const WS_URL = "ws://127.0.0.1:8080/";
+const USER_VARS = ["ci_total", "ci_streak", "ci_wheel_earned", "ci_wheel_claimed"];
+const $ = id => document.getElementById(id);
+let socket = null, seq = 0, actor = null, globals = {}, viewers = [];
+const waiting = new Map();
+
+// Streamer.bot returns variables as an object keyed by name or as an array, depending on request.
+function listOf(variables) { return Array.isArray(variables) ? variables : Object.values(variables || {}); }
+function globalsFrom(response) {
+  const out = {};
+  for (const v of listOf(response.variables)) if (v && v.name) out[v.name] = v.value;
+  return out;
+}
+function viewersFrom(responses) {
+  const rows = {};
+  for (const [variable, response] of Object.entries(responses)) {
+    for (const v of listOf(response.variables)) {
+      if (!v || !v.userId) continue;
+      const row = rows[v.userId] || (rows[v.userId] = {userId: v.userId, login: "", name: "",
+        ci_total: 0, ci_streak: 0, ci_wheel_earned: 0, ci_wheel_claimed: 0});
+      row.login = v.userLogin || row.login;
+      row.name = v.userName || row.name || row.login;
+      row[variable] = Number(v.value) || 0;
+    }
+  }
+  return Object.values(rows).sort((a, b) => b.ci_total - a.ci_total || a.name.localeCompare(b.name));
+}
+function wheelMonths(g) {
+  return Object.keys(g).filter(k => /^ci_wheel_month_\d{4}_\d{2}$/.test(k))
+    .map(k => k.slice("ci_wheel_month_".length).replace("_", "-")).sort().reverse();
+}
+function wheelEntries(g, month) {
+  const raw = g["ci_wheel_month_" + month.replace("-", "_")];
+  if (!raw) return [];
+  const list = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return Array.isArray(list) ? list.filter(Boolean) : [];
+}
+function entryStatus(e) {
+  if (e.replacedBy) return "replaced";
+  if (e.removed) return "removed";
+  return e.status || "approved";
+}
+// Mirrors what 13-wheel-admin.cs allows for each state.
+function actionsFor(e) {
+  switch (entryStatus(e)) {
+    case "pending": return ["approve", "reject", "rename", "remove"];
+    case "approved": return ["reject", "rename", "remove"];
+    case "rejected": return ["approve", "rename", "remove"];
+    case "removed": return ["restore"];
+    default: return [];
+  }
+}
+function adminRequest(kind, rawInput, who) {
+  return {request: "DoAction", action: {name: kind === "wheel" ? "CI - Wheel Admin" : "CI - Admin Check-ins"},
+          args: {userId: who.id, userName: who.name, rawInput}};
+}
+
+function request(body) {
+  return new Promise((resolve, reject) => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return reject(new Error("not connected to Streamer.bot"));
+    const id = "dash-" + (++seq);
+    waiting.set(id, {resolve, reject});
+    socket.send(JSON.stringify(Object.assign({}, body, {id})));
+    setTimeout(() => { if (waiting.delete(id)) reject(new Error(body.request + " timed out")); }, 5000);
+  });
+}
+function log(text) { $("log").textContent = new Date().toLocaleTimeString() + "  " + text; }
+async function run(kind, rawInput) {
+  if (!actor) { log("Can't run yet: the broadcaster account isn't known. Is Twitch connected in Streamer.bot?"); return; }
+  const shown = (kind === "wheel" ? "!wheeladmin " : "!checkinadmin ") + rawInput;
+  log("Running " + shown + " …");
+  try {
+    const r = await request(adminRequest(kind, rawInput, actor));
+    if (r.status && r.status !== "ok") throw new Error(r.error || "Streamer.bot refused the action");
+    log("Ran " + shown + ". Twitch chat shows the result.");
+    setTimeout(refresh, 1200);
+  } catch (e) { log("Failed: " + shown + ": " + e.message); }
+}
+
+async function refresh() {
+  try {
+    globals = globalsFrom(await request({request: "GetGlobals", persisted: true}));
+    const responses = {};
+    for (const v of USER_VARS) responses[v] = await request({request: "GetUserGlobals", variable: v, persisted: true});
+    viewers = viewersFrom(responses);
+    render();
+  } catch (e) { log("Refresh failed: " + e.message); }
+}
+
+function cell(row, text, cls) {
+  const td = document.createElement("td");
+  if (cls) td.className = cls;
+  if (text !== undefined) td.textContent = text;
+  row.append(td);
+  return td;
+}
+function button(td, label, onClick) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = label; b.addEventListener("click", onClick);
+  td.append(b);
+}
+function emptyRow(body, cols, text) {
+  const tr = document.createElement("tr"), td = cell(tr, text, "empty");
+  td.colSpan = cols; body.append(tr);
+}
+function wheelAction(op, e) {
+  if (op === "rename") {
+    const title = prompt("New title for '" + e.game + "':", e.game);
+    if (title && title.trim()) run("wheel", "rename " + e.id + " " + title.trim());
+  } else if (op !== "remove" || confirm("Remove '" + e.game + "' from the wheel? No credits are refunded.")) {
+    run("wheel", op + " " + e.id);
+  }
+}
+function viewerAction(op, v) {
+  const login = "@" + (v.login || v.name);
+  if (op === "reset") {
+    if (confirm("Reset " + v.name + "'s check-ins and streak to 0?")) run("checkins", "reset " + login);
+    return;
+  }
+  const question = {set: "Set total check-ins to:", add: "Add how many check-ins?", remove: "Remove how many check-ins?",
+                    streak: "Set streak to:"}[op];
+  const n = prompt(v.name + ": " + question, op === "set" ? v.ci_total : op === "streak" ? v.ci_streak : "1");
+  if (n === null) return;
+  if (!/^\d{1,7}$/.test(n.trim())) { log("Enter a whole number."); return; }
+  run("checkins", op + " " + login + " " + n.trim());
+}
+
+function render() {
+  const select = $("month"), chosen = select.value, months = wheelMonths(globals);
+  select.replaceChildren(...months.map(m => { const o = document.createElement("option"); o.value = o.textContent = m; return o; }));
+  if (months.includes(chosen)) select.value = chosen;
+  if (!$("addMonth").value && select.value) $("addMonth").value = select.value;
+
+  const body = $("wheelRows"); body.replaceChildren();
+  let entries = [];
+  try { entries = select.value ? wheelEntries(globals, select.value) : []; }
+  catch (e) { emptyRow(body, 5, "This month's saved list can't be read: " + e.message); }
+  const count = s => entries.filter(e => entryStatus(e) === s).length;
+  $("wheelSummary").textContent = select.value ? count("approved") + " approved · " + count("pending") + " pending · " + entries.length + " recorded" : "";
+  if (!entries.length && body.children.length === 0) emptyRow(body, 5, months.length ? "No games this month." : "No wheel games saved yet.");
+  for (const e of entries) {
+    const tr = document.createElement("tr"), status = entryStatus(e);
+    cell(tr, e.game || "");
+    cell(tr, e.user || (e.userId === "admin-added" ? "(added by a moderator)" : ""));
+    const pill = document.createElement("span"); pill.className = "pill " + status; pill.textContent = status;
+    cell(tr).append(pill);
+    cell(tr).append(Object.assign(document.createElement("code"), {textContent: e.id || ""}));
+    const td = cell(tr, undefined, "actions");
+    for (const op of actionsFor(e)) button(td, op[0].toUpperCase() + op.slice(1), () => wheelAction(op, e));
+    body.append(tr);
+  }
+
+  const vbody = $("viewerRows"), q = $("search").value.trim().toLowerCase();
+  vbody.replaceChildren();
+  const shown = viewers.filter(v => !q || v.name.toLowerCase().includes(q) || v.login.toLowerCase().includes(q));
+  if (!shown.length) emptyRow(vbody, 5, viewers.length ? "No viewers match." : "No check-ins saved yet.");
+  for (const v of shown.slice(0, 200)) {
+    const tr = document.createElement("tr");
+    cell(tr, v.name);
+    cell(tr, String(v.ci_total), "num");
+    cell(tr, String(v.ci_streak), "num");
+    cell(tr, String(Math.max(0, v.ci_wheel_earned - v.ci_wheel_claimed)), "num");
+    const td = cell(tr, undefined, "actions");
+    for (const [op, label] of [["set", "Set"], ["add", "Add"], ["remove", "Remove"], ["streak", "Streak"], ["reset", "Reset"]])
+      button(td, label, () => viewerAction(op, v));
+    vbody.append(tr);
+  }
+}
+
+function setStatus(text, ok) { $("status").textContent = text; $("status").className = ok ? "ok" : ""; }
+function connect() {
+  socket = new WebSocket(WS_URL);
+  socket.onopen = async () => {
+    setStatus("Connected to Streamer.bot", true);
+    try {
+      const b = await request({request: "GetBroadcaster"});
+      const t = b.platforms && b.platforms.twitch;
+      actor = t && t.broadcastUserId ? {id: String(t.broadcastUserId), name: t.broadcastUserName || t.broadcastUser || "broadcaster"} : null;
+      if (!actor) log("Streamer.bot isn't connected to the Twitch broadcaster account, so changes are disabled.");
+    } catch (e) { log("Couldn't read the broadcaster account: " + e.message); }
+    refresh();
+  };
+  socket.onmessage = event => {
+    let m; try { m = JSON.parse(event.data); } catch (_) { return; }
+    const w = m && waiting.get(m.id);
+    if (w) { waiting.delete(m.id); w.resolve(m); }
+  };
+  socket.onclose = () => {
+    for (const w of waiting.values()) w.reject(new Error("connection closed"));
+    waiting.clear(); actor = null;
+    setStatus("Not connected: is Streamer.bot running with its WebSocket server on port 8080? Retrying…", false);
+    setTimeout(connect, 3000);
+  };
+}
+
+$("month").addEventListener("change", render);
+$("search").addEventListener("input", render);
+$("addGame").addEventListener("submit", event => {
+  event.preventDefault();
+  const user = $("addUser").value.trim().replace(/^@?/, "@");
+  run("wheel", "add " + (user === "@" ? "" : user + " ") + $("addMonth").value.trim() + " " + $("addTitle").value.trim());
+  $("addTitle").value = "";
+});
+setInterval(() => { if (socket && socket.readyState === WebSocket.OPEN) refresh(); }, 15000);
+connect();
+</script>
+</body>
+</html>

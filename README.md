@@ -14,7 +14,8 @@ the Twitch/OBS acceptance checklist before using the changes live.
 - [Operational runbook](docs/OPERATIONS.md): backups, dry-run restore, diagnostics, reconciliation, moderation, safe upgrades and production test gates
 - [Central configuration](config/checkins.json): authoritative milestones, reward interval and command registration intent
 - [Offline synthetic sandbox](tools/checkin-ops.py): simulated streams, game review and credits, separate from production Streamer.bot
-- [Local admin dashboard](tools/admin-dashboard.py): browse a private backup and export approved games. Moderators make updates in Twitch chat, including between broadcasts.
+- [Live admin dashboard](tools/live-dashboard.html): open in a browser on the Streamer.bot PC to approve, reject, add and rename wheel games and correct check-in counts without chat. It runs the same admin actions as `!wheeladmin` and `!checkinadmin`.
+- [Backup dashboard](tools/admin-dashboard.py): browse a private backup and export approved games.
 - [Real Streamer.bot acceptance checklist](docs/STREAMERBOT-ACCEPTANCE.md): redemption, duplicate delivery, month rollover, moderator review and backup validation
 - [Full chat command reference](docs/COMMANDS.md): includes moderator `!wheeladmin` controls
 
