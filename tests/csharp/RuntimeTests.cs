@@ -141,7 +141,7 @@ public static class RuntimeTests
         Assert(new Action13().Execute(), "admin add failed");
         var entry = JArray.Parse(CPH.GetGlobalVar<string>(key)).Single();
         Assert((string)entry["status"] == "approved" && (string)entry["userId"] == "admin-added" &&
-            (string)entry["user"] == "alice" && (string)entry["game"] == "Old   Favourite", "admin add saved wrong entry");
+            (string)entry["user"] == "alice" && (string)entry["game"] == "Old Favourite", "admin add saved wrong entry");
         Assert(CPH.GetTwitchUserVarById<int>("123", "ci_wheel_claimed") == 0, "admin add spent a viewer credit");
         Assert(JArray.Parse(CPH.GetGlobalVar<string>("ci_wheel_audit_json")).Count == 1, "admin add not audited");
         CPH.Args["rawInput"] = "add 2026-10 old favourite";
