@@ -115,6 +115,18 @@ function connect(){
   socket.onclose=()=>{$("status").textContent="Disconnected; retrying";requestPending=false;hide();lastEvent="";setTimeout(connect,3000)};
   socket.onerror=()=>{$("status").textContent="WebSocket error"};
 }
-setInterval(()=>{if(requestPending&&Date.now()-requestAt>2500)requestPending=false;poll()},650);
-connect();
+// Add ?demo to the file URL to preview a sample spin every 25 seconds with no Streamer.bot.
+function demo(){
+  $("status").textContent="Demo mode: sample data, not connected";
+  const games=["Demo Game One","Sample Quest","Test Kart","Pixel Garden","Cozy Farm","Space Drift"];
+  const d=new Date(),month=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+  const spin=()=>{
+    const choices=games.map((game,i)=>({id:"demo-"+i,game,user:"Demo viewer"})),pick=Math.floor(Math.random()*choices.length);
+    accept({eventId:"demo-"+Date.now(),month,choices,selectedIndex:pick,winner:choices[pick],
+      startedAtMs:Date.now(),durationMs:10000,visibleMs:18000,hidden:false});
+  };
+  spin();setInterval(spin,25000);
+}
+if(typeof location!=="undefined"&&new URLSearchParams(location.search).has("demo"))demo();
+else{setInterval(()=>{if(requestPending&&Date.now()-requestAt>2500)requestPending=false;poll()},650);connect();}
 </script></body></html>

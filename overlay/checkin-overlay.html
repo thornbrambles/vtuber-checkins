@@ -104,8 +104,17 @@ function connect() {
   socket.onclose=()=>{$('status').textContent='Disconnected; retrying';pending=false;setTimeout(connect,3000)};
   socket.onerror=()=>{ $('status').textContent='WebSocket error'; };
 }
-setInterval(poll,POLL_MS);
+// Add ?demo to the file URL to preview with sample data and no Streamer.bot.
+function demo() {
+  $('status').textContent='Demo mode: sample data, not connected';
+  let n=0;
+  const tick=()=>{ n++; render({count:2+n, eventId:'demo-'+n, latest:'Demo viewer', milestone:n%3===0?'Sapling':'',
+    total:10, streak:2, lastCheckinAtMs:Date.now(),
+    topTotals:[{name:'Demo viewer',value:10},{name:'Sample friend',value:7}], topStreaks:[{name:'Demo viewer',value:2}]}); };
+  tick(); setTimeout(tick,500); setInterval(tick,10000);
+}
 setInterval(updateLeaderboardVisibility, 200);
-connect();
+if (typeof location!=='undefined' && new URLSearchParams(location.search).has('demo')) demo();
+else { setInterval(poll,POLL_MS); connect(); }
 </script>
 </body></html>

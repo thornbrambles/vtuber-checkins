@@ -216,7 +216,13 @@ Check the reward-trigger selector (specific reward, not Any), rewardId and redem
 
 ### OBS is blank
 
-The leaderboard is **deliberately hidden** until a successful check-in; a blank screen after a minute is expected. For debugging, change the #status CSS opacity from 0 to 1 in the HTML, refresh the OBS browser, and confirm WebSocket access to ws://127.0.0.1:8080/. OBS must be able to access the Streamer.bot host.
+The leaderboard is **deliberately hidden** until a successful check-in; a blank screen after a minute is expected. Test in this order:
+
+1. **Overlay only:** add `?demo` to the end of the Browser Source's local file path (uncheck **Local File** and use a `file:///C:/.../overlay/checkin-overlay.html?demo` URL). Sample data shows with no Streamer.bot. If this is blank, the problem is the OBS source itself (size, position, source order).
+2. **Connection:** remove `?demo`. The small status text in the corner should read "Connected". Otherwise confirm the Streamer.bot WebSocket server is running on ws://127.0.0.1:8080/ without authentication.
+3. **Full path:** type `!checkinadmin test` or `!spinwheel test` in chat. Each shows the overlay with test data through Streamer.bot without changing counts or saving a draw.
+
+The status text is on by default; set the `#status` opacity to 0 in each overlay to hide it once everything works.
 
 ### Wrong streak after a missed stream
 

@@ -153,6 +153,23 @@ public static class RuntimeTests
         Assert(new Action14().Execute(), "reconcile flagged an admin-added game");
         Console.WriteLine("PASS moderator add creates an approved, audited, credit-free game");
     }
+    private static void OverlayTests() {
+        Setup(); CPH.Args["userId"] = "mod"; CPH.Args["userName"] = "moderator";
+        CPH.Globals["ci_overlay_json"] = "{\"count\":4,\"topTotals\":[]}";
+        CPH.Args["rawInput"] = "test";
+        Assert(new Action05().Execute(), "check-in overlay test failed");
+        var state = JObject.Parse(CPH.GetGlobalVar<string>("ci_overlay_json"));
+        Assert((int)state["count"] == 4 && (long)state["lastCheckinAtMs"] > 0 && ((string)state["eventId"]).StartsWith("test-"),
+            "check-in overlay test did not trigger the overlay");
+        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_total") == 10, "overlay test changed counts");
+        Assert(new Action17().Execute(), "wheel test failed");
+        var wheel = JObject.Parse(CPH.GetGlobalVar<string>("ci_wheel_spin_overlay_json"));
+        Assert((string)wheel["spinId"] == "test" && ((JArray)wheel["choices"]).Count == 6, "wheel test not published");
+        Assert(!CPH.Globals.Keys.Any(k => k.StartsWith("ci_wheel_spin_result_") || k == "ci_wheel_spin_audit_json"), "wheel test saved a draw");
+        CPH.Args["rawInput"] = "show";
+        Assert(new Action17().Execute() && CPH.Messages.Last().StartsWith("No saved wheel result"), "show did not default to last month");
+        Console.WriteLine("PASS overlay tests change no counts or draws; show defaults to last month");
+    }
     private static void FrameworkDraw() {
         var draw = typeof(Action17).GetMethod("DrawIndex", BindingFlags.NonPublic | BindingFlags.Static);
         foreach (int count in new [] {1, 2, 3, 7, 200}) {
@@ -288,7 +305,7 @@ public static class RuntimeTests
     }
 
     public static int Main() {
-        CheckinRetries(); InterruptedCheckins(); ModerationDuplicates(); AdminAdd(); FrameworkDraw();
+        CheckinRetries(); InterruptedCheckins(); ModerationDuplicates(); AdminAdd(); OverlayTests(); FrameworkDraw();
         StreamAndRejectionRegression(); WheelJournalRegression();
         OffStreamAdministration(); PendingTitleReservation(); ReplayPreservesAnnouncement();
         ViewerHelp();
