@@ -102,13 +102,28 @@ function poll(){
   requestPending=true;requestAt=Date.now();
   socket.send(JSON.stringify({request:"GetGlobal",id:REQUEST_ID,variable:"ci_wheel_spin_overlay_json",persisted:true}));
 }
+// Explains in the status text why a Streamer.bot reply did not deliver overlay data.
+function replyProblem(m, requestId, variable){
+  if(m.authentication) return "Streamer.bot requires WebSocket authentication. Turn it off under Servers/Clients > WebSocket Server.";
+  if(m.id!==requestId){
+    if(m.request==="Hello") return null;
+    if(m.status&&m.status!=="ok") return "Streamer.bot error: "+(m.error||m.status);
+    return "Unexpected Streamer.bot reply: "+JSON.stringify(m).slice(0,160);
+  }
+  if(m.status!=="ok") return "Streamer.bot refused the request: "+(m.error||m.status||"no reason given")+". Is Streamer.bot up to date?";
+  if(!m.variable) return "Connected, but "+variable+" is not saved yet.";
+  return "";
+}
 function connect(){
   socket=new WebSocket(WS_URL);
   socket.onopen=()=>{$("status").textContent="Connected";requestPending=false;poll()};
   socket.onmessage=event=>{
     let m;try{m=JSON.parse(event.data)}catch(_){return}
-    if(m.id!==REQUEST_ID)return;requestPending=false;
-    if(m.status!=="ok"||!m.variable)return;
+    const problem=replyProblem(m,REQUEST_ID,"ci_wheel_spin_overlay_json (no spin sent yet)");
+    if(m.id!==REQUEST_ID){if(problem)$("status").textContent=problem;return}
+    requestPending=false;
+    if(problem){$("status").textContent=problem;return}
+    $("status").textContent="Connected · wheel data received "+new Date().toLocaleTimeString();
     try{accept(typeof m.variable.value==="string"?JSON.parse(m.variable.value):m.variable.value)}
     catch(e){$("status").textContent="Wheel state error: "+e.message}
   };

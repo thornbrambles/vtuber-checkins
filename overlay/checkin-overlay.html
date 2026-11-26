@@ -90,14 +90,29 @@ function poll() {
   socket.send(JSON.stringify({request:'GetGlobal', id:'checkin-state', variable:'ci_overlay_json', persisted:true}));
   setTimeout(()=>{pending=false},1200);
 }
+// Explains in the status text why a Streamer.bot reply did not deliver overlay data.
+function replyProblem(m, requestId, variable){
+  if(m.authentication) return "Streamer.bot requires WebSocket authentication. Turn it off under Servers/Clients > WebSocket Server.";
+  if(m.id!==requestId){
+    if(m.request==="Hello") return null;
+    if(m.status&&m.status!=="ok") return "Streamer.bot error: "+(m.error||m.status);
+    return "Unexpected Streamer.bot reply: "+JSON.stringify(m).slice(0,160);
+  }
+  if(m.status!=="ok") return "Streamer.bot refused the request: "+(m.error||m.status||"no reason given")+". Is Streamer.bot up to date?";
+  if(!m.variable) return "Connected, but "+variable+" is not saved yet.";
+  return "";
+}
 function connect() {
   try {socket=new WebSocket(WS_URL)} catch(e) { $('status').textContent='Invalid WebSocket URL'; setTimeout(connect,3000);return; }
   socket.onopen=()=>{$('status').textContent='Connected';ready=false;pending=false;poll();};
   socket.onmessage=(event)=>{
     let response;try{response=JSON.parse(event.data)}catch(e){return}
+    const problem=replyProblem(response,'checkin-state','ci_overlay_json');
+    if(problem!==null && response.id!=='checkin-state'){$('status').textContent=problem;return;}
     if(response.id!=='checkin-state')return;
     pending=false;
-    if(response.status!=='ok' || !response.variable)return;
+    if(problem){$('status').textContent=problem;return;}
+    $('status').textContent='Connected · data received '+new Date().toLocaleTimeString();
     try { render(typeof response.variable.value==='string' ? JSON.parse(response.variable.value) : response.variable.value); }
     catch(e){ $('status').textContent='Bad overlay JSON: '+e.message; }
   };
