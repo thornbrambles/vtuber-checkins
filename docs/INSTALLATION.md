@@ -24,6 +24,8 @@ together. Use Twitch moderator commands for edits and the importer for recovery.
 
 **All commands and permissions:** [COMMANDS.md](COMMANDS.md).
 
+**Live admin dashboard:** on the PC running Streamer.bot, open `tools/live-dashboard.html` in a web browser (double-click it). It connects to the local WebSocket server from step 6, shows wheel games and viewers, and its buttons run `CI - Wheel Admin` and `CI - Admin Check-ins` as the broadcaster, so those two action names must match exactly. Replies still post in Twitch chat. Streamer.bot must be connected to the broadcaster's Twitch account. Don't expose port 8080 beyond this PC: anything that can reach it can run these actions.
+
 A local-only admin dashboard for private backup files is available at `tools/admin-dashboard.py`. It displays a read-only snapshot and exports approved games. With the bot connected, moderators can use `!checkinadmin` and `!wheeladmin` in the broadcaster’s Twitch chat even when the stream is offline. Read [OPERATIONS.md](OPERATIONS.md) and [STREAMERBOT-ACCEPTANCE.md](STREAMERBOT-ACCEPTANCE.md) before using it.
 
 This repository contains standalone Streamer.bot C# action bodies and an OBS HTML overlay. It is **not** an importable Streamer.bot package. Follow the steps in order. Back up Streamer.bot before changing an existing setup.
