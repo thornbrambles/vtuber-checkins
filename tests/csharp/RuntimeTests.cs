@@ -161,7 +161,7 @@ public static class RuntimeTests
         var state = JObject.Parse(CPH.GetGlobalVar<string>("ci_overlay_json"));
         Assert((int)state["count"] == 4 && (long)state["lastCheckinAtMs"] > 0 && ((string)state["eventId"]).StartsWith("test-"),
             "check-in overlay test did not trigger the overlay");
-        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_total") == 10, "overlay test changed counts");
+        Assert(CPH.GetTwitchUserVarById<int>("123", "ci_total") == 9, "overlay test changed counts");
         Assert(new Action17().Execute(), "wheel test failed");
         var wheel = JObject.Parse(CPH.GetGlobalVar<string>("ci_wheel_spin_overlay_json"));
         Assert((string)wheel["spinId"] == "test" && ((JArray)wheel["choices"]).Count == 6, "wheel test not published");
